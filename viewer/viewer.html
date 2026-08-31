@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PPTX Viewer</title>
+  <meta name="description" content="Client-side PPTX presentation viewer — no upload, no server." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="viewer.css" />
+</head>
+<body>
+
+  <!-- ── Loading / Error Overlay ───────────────────────────────────────────── -->
+  <div id="overlay" class="overlay" aria-live="polite" aria-atomic="true">
+    <div class="overlay__inner">
+      <div id="overlay-spinner" class="spinner" role="status" aria-label="Loading presentation"></div>
+      <p id="overlay-message" class="overlay__message">Loading presentation…</p>
+    </div>
+  </div>
+
+  <!-- ── App Shell ─────────────────────────────────────────────────────────── -->
+  <div id="app" class="app" hidden>
+
+    <!-- Toolbar -->
+    <header class="toolbar" role="banner">
+      <div class="toolbar__left">
+        <div class="toolbar__logo" aria-label="PPTX Viewer">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <rect x="2" y="3" width="12" height="14" rx="1.5" fill="#e2e8f0" opacity="0.9"/>
+            <rect x="4" y="6" width="8" height="1.5" rx="0.75" fill="#00d4aa"/>
+            <rect x="4" y="9" width="6" height="1.5" rx="0.75" fill="#94a3b8"/>
+            <rect x="4" y="12" width="7" height="1.5" rx="0.75" fill="#94a3b8"/>
+            <circle cx="15" cy="14.5" r="3" stroke="#00d4aa" stroke-width="1.8" fill="none"/>
+            <line x1="17.1" y1="16.6" x2="19" y2="18.5" stroke="#00d4aa" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span class="toolbar__title" id="toolbar-filename">PPTX Viewer</span>
+        </div>
+      </div>
+
+      <div class="toolbar__center">
+        <button id="btn-prev" class="toolbar__btn" title="Previous slide (←)" aria-label="Previous slide">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M10 3L5 8l5 5V3z"/>
+          </svg>
+        </button>
+        <div class="slide-counter">
+          <span id="slide-current">1</span>
+          <span class="slide-counter__sep">/</span>
+          <span id="slide-total">1</span>
+        </div>
+        <button id="btn-next" class="toolbar__btn" title="Next slide (→)" aria-label="Next slide">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M6 3l5 5-5 5V3z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar__right">
+        <button id="btn-zoom-out" class="toolbar__btn" title="Zoom out (-)" aria-label="Zoom out">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M3 8h10M1 8a7 7 0 1014 0A7 7 0 001 8z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          </svg>
+        </button>
+        <span id="zoom-label" class="zoom-label">100%</span>
+        <button id="btn-zoom-in" class="toolbar__btn" title="Zoom in (+)" aria-label="Zoom in">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 3v10M3 8h10M1 8a7 7 0 1014 0A7 7 0 001 8z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          </svg>
+        </button>
+        <div class="toolbar__divider" aria-hidden="true"></div>
+        <button id="btn-export" class="toolbar__btn toolbar__btn--accent" title="Export slides as PNG images" aria-label="Export as PNG ZIP">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 2v8M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          </svg>
+          <span>Export</span>
+        </button>
+        <div class="toolbar__divider" aria-hidden="true"></div>
+        <button id="btn-open-file" class="toolbar__btn" title="Open a different PPTX file" aria-label="Open file">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2 4a1 1 0 011-1h3.586a1 1 0 01.707.293L8.707 4.7A1 1 0 009.414 5H13a1 1 0 011 1v6a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Keyboard hints bar -->
+    <div class="hints-bar" role="note" aria-label="Keyboard shortcuts">
+      <span class="hint"><kbd>←</kbd><kbd>→</kbd> Navigate</span>
+      <span class="hint"><kbd>Home</kbd><kbd>End</kbd> First/Last</span>
+      <span class="hint"><kbd>+</kbd><kbd>−</kbd> Zoom</span>
+      <span class="hint"><kbd>Scroll</kbd> Zoom</span>
+    </div>
+
+    <!-- Main layout: thumbnails + canvas -->
+    <main class="main-layout" role="main">
+
+      <!-- Thumbnail strip -->
+      <aside class="thumbnail-strip" aria-label="Slide thumbnails" role="navigation">
+        <div id="thumbnail-list" class="thumbnail-list"></div>
+      </aside>
+
+      <!-- Canvas area -->
+      <section class="canvas-area" aria-label="Slide viewer">
+        <div id="canvas-wrapper" class="canvas-wrapper">
+          <canvas id="slide-canvas" aria-label="Current slide" role="img"></canvas>
+        </div>
+      </section>
+
+    </main>
+
+  </div><!-- /#app -->
+
+  <!-- ── Manual file picker (shown when mode=manual or no pending file) ─────── -->
+  <div id="manual-picker" class="manual-picker" hidden aria-labelledby="picker-title">
+    <div class="manual-picker__card">
+      <div class="manual-picker__icon" aria-hidden="true">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <rect x="8" y="10" width="36" height="44" rx="4" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+          <rect x="14" y="20" width="24" height="3" rx="1.5" fill="#00d4aa"/>
+          <rect x="14" y="27" width="20" height="2.5" rx="1.25" fill="#475569"/>
+          <rect x="14" y="33" width="22" height="2.5" rx="1.25" fill="#475569"/>
+          <circle cx="47" cy="46" r="12" fill="#0f172a" stroke="#00d4aa" stroke-width="2"/>
+          <line x1="43" y1="46" x2="51" y2="46" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/>
+          <line x1="47" y1="42" x2="47" y2="50" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h1 id="picker-title" class="manual-picker__title">Open a PPTX File</h1>
+      <p class="manual-picker__subtitle">Your file never leaves this device. No upload, no server.</p>
+      <label for="file-input" class="manual-picker__btn">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <path d="M9 2v10M5.5 5.5L9 2l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 13v1.5A1.5 1.5 0 003.5 16h11a1.5 1.5 0 001.5-1.5V13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        Choose PPTX File
+      </label>
+      <input type="file" id="file-input" accept=".pptx" class="file-input-hidden" aria-label="Choose a PPTX file" />
+      <p class="manual-picker__hint">Or drag and drop a <code>.pptx</code> file anywhere on this page</p>
+    </div>
+  </div><!-- /#manual-picker -->
+
+  <!-- Hidden progress bar for export operation -->
+  <div id="export-progress" class="export-progress" hidden role="status" aria-live="polite">
+    <div class="export-progress__bar">
+      <div id="export-progress-fill" class="export-progress__fill"></div>
+    </div>
+    <span id="export-progress-label" class="export-progress__label">Exporting slide 0 of 0…</span>
+  </div>
+
+  <script src="../lib/jszip.min.js"></script>
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>
