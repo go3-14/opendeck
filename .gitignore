@@ -45,3 +45,7 @@ logs/
 # Chrome extension packed files
 *.crx
 *.pem
+
+# Planning / design documents (not part of the extension)
+*-plan.md
+implementation_plan.md

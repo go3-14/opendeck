@@ -18,7 +18,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["viewer/*"],
+      "resources": ["viewer/*", "viewer/renderer/*", "lib/*", "icons/*"],
       "matches": ["<all_urls>"]
     }
   ]

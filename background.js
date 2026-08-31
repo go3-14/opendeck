@@ -35,6 +35,7 @@ function isPptx(item) {
 
 // onDeterminingFilename fires before the file is saved; cancelling here
 // prevents the native save dialog / auto-save from completing.
+// 'blocking' is required so our suggest() call controls the filename dialog.
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
   if (!isPptx(item)) {
     // Not a PPTX — let it through untouched
@@ -47,9 +48,11 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
   // Signal we handled suggestion (required by the API)
   suggest({ filename: item.filename, conflictAction: 'uniquify' });
 
+  // Note: Service Workers may suspend during long fetches. 
+  // In a production app, keep-alive pinging or Alarm API would be used here.
   // Hand off to the fetch + storage pipeline
   handlePptxDownload(item);
-});
+}, ['blocking']);
 
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
 function openIdb() {
