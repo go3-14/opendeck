@@ -101,3 +101,38 @@ async function fetchAndStore(url, filename) {
     await chrome.storage.session.remove(SESSION_KEY);
   }
 }
+
+// ─── Main handler: tab creation, dedup, error notification ───────────────────
+/**
+ * Orchestrates the full PPTX interception flow:
+ *   1. Dedup guard — skip if this download ID is already being processed
+ *   2. Fetch + store bytes
+ *   3. Open viewer tab
+ *   4. On error: show notification guiding user to open file manually
+ */
+async function handlePptxDownload(item) {
+  // Deduplication: prevent double-processing if the event fires multiple times
+  if (processingIds.has(item.id)) return;
+  processingIds.add(item.id);
+
+  try {
+    await fetchAndStore(item.url, item.filename || 'presentation.pptx');
+    await chrome.tabs.create({ url: `${VIEWER_URL}?mode=intercepted` });
+  } catch (err) {
+    console.error('[PPTX Viewer] Failed to intercept download:', err);
+
+    // Show a user-facing notification explaining what happened
+    chrome.notifications.create(`pptx-error-${item.id}`, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: 'PPTX Viewer — Could not open file',
+      message:
+        `Could not fetch "${item.filename || 'the file'}". ` +
+        'You can open the downloaded file manually via the extension toolbar button.',
+      priority: 1,
+    });
+  } finally {
+    // Always clean up the dedup set, even on error
+    processingIds.delete(item.id);
+  }
+}
