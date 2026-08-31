@@ -19,3 +19,34 @@ const processingIds = new Set();
 chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({ url: `${VIEWER_URL}?mode=manual` });
 });
+
+// ─── Download interception ────────────────────────────────────────────────────
+/**
+ * Determines if a download item is a PPTX file by checking:
+ *   1. The filename extension (most reliable)
+ *   2. The MIME type (fallback for extensionless URLs)
+ */
+function isPptx(item) {
+  const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  const byExt = item.filename && item.filename.toLowerCase().endsWith('.pptx');
+  const byMime = item.mime && item.mime.toLowerCase() === PPTX_MIME;
+  return byExt || byMime;
+}
+
+// onDeterminingFilename fires before the file is saved; cancelling here
+// prevents the native save dialog / auto-save from completing.
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  if (!isPptx(item)) {
+    // Not a PPTX — let it through untouched
+    suggest();
+    return;
+  }
+
+  // Cancel the native download immediately (synchronous)
+  chrome.downloads.cancel(item.id);
+  // Signal we handled suggestion (required by the API)
+  suggest({ filename: item.filename, conflictAction: 'uniquify' });
+
+  // Hand off to the fetch + storage pipeline
+  handlePptxDownload(item);
+});
