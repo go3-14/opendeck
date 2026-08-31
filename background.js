@@ -10,7 +10,7 @@ const IDB_STORE_NAME = 'pptx_store';
 const IDB_KEY        = 'pending_file';
 const SIZE_THRESHOLD = 8 * 1024 * 1024; // 8 MB
 
-// Deduplication: track download IDs being processed
+// Deduplication: prevent processing the same download twice
 const processingIds = new Set();
 
 // ─── Toolbar icon click → manual mode ────────────────────────────────────────
@@ -26,20 +26,13 @@ function isPptx(item) {
   return byExt || byMime;
 }
 
-// ─── Download interception ────────────────────────────────────────────────────
-// onDeterminingFilename fires before Chrome saves the file.
-// MV3: no filter array allowed — just addListener(callback) with no third arg.
-chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
-  if (!isPptx(item)) {
-    suggest(); // pass through non-PPTX downloads untouched
-    return;
-  }
-
-  // Suggest a filename so Chrome is satisfied, then immediately cancel.
-  suggest({ filename: item.filename || 'presentation.pptx', conflictAction: 'uniquify' });
+// ─── Download interception via onCreated ──────────────────────────────────────
+// onCreated fires as soon as Chrome registers the download.
+// We cancel it immediately, then fetch+store+open the viewer ourselves.
+// This avoids onDeterminingFilename's broken suggest() API in MV3.
+chrome.downloads.onCreated.addListener((item) => {
+  if (!isPptx(item)) return;
   chrome.downloads.cancel(item.id);
-
-  // Kick off the fetch + store + open-tab pipeline asynchronously.
   handlePptxDownload(item);
 });
 
