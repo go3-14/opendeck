@@ -35,7 +35,7 @@ function isPptx(item) {
 
 // onDeterminingFilename fires before the file is saved; cancelling here
 // prevents the native save dialog / auto-save from completing.
-// 'blocking' is required so our suggest() call controls the filename dialog.
+// Note: MV3 does NOT support filter arrays on this event.
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
   if (!isPptx(item)) {
     // Not a PPTX — let it through untouched
