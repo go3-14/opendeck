@@ -3,11 +3,11 @@
 'use strict';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const VIEWER_URL     = chrome.runtime.getURL('viewer/viewer.html');
-const SESSION_KEY    = 'pptx_pending';
-const IDB_DB_NAME    = 'pptx_viewer';
+const VIEWER_URL = chrome.runtime.getURL('viewer/viewer.html');
+const SESSION_KEY = 'pptx_pending';
+const IDB_DB_NAME = 'pptx_viewer';
 const IDB_STORE_NAME = 'pptx_store';
-const IDB_KEY        = 'pending_file';
+const IDB_KEY = 'pending_file';
 const SIZE_THRESHOLD = 8 * 1024 * 1024; // 8 MB
 
 // Deduplication: prevent processing the same download twice
@@ -21,8 +21,8 @@ chrome.action.onClicked.addListener(() => {
 // ─── PPTX detection ──────────────────────────────────────────────────────────
 function isPptx(item) {
   const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-  const byExt  = item.filename && item.filename.toLowerCase().endsWith('.pptx');
-  const byMime = item.mime     && item.mime.toLowerCase() === PPTX_MIME;
+  const byExt = item.filename && item.filename.toLowerCase().endsWith('.pptx');
+  const byMime = item.mime && item.mime.toLowerCase() === PPTX_MIME;
   return byExt || byMime;
 }
 
@@ -42,7 +42,7 @@ function openIdb() {
     const req = indexedDB.open(IDB_DB_NAME, 1);
     req.onupgradeneeded = (e) => e.target.result.createObjectStore(IDB_STORE_NAME);
     req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror   = (e) => reject(e.target.error);
+    req.onerror = (e) => reject(e.target.error);
   });
 }
 
@@ -51,7 +51,7 @@ function writeIdb(db, value) {
     const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
     tx.objectStore(IDB_STORE_NAME).put(value, IDB_KEY);
     tx.oncomplete = resolve;
-    tx.onerror    = (e) => reject(e.target.error);
+    tx.onerror = (e) => reject(e.target.error);
   });
 }
 
@@ -60,7 +60,7 @@ async function fetchAndStore(url, filename) {
   const response = await fetch(url, { credentials: 'include' });
   if (!response.ok) throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
 
-  const bytes   = await response.arrayBuffer();
+  const bytes = await response.arrayBuffer();
   const payload = { filename, bytes, timestamp: Date.now() };
 
   if (bytes.byteLength <= SIZE_THRESHOLD) {
@@ -86,10 +86,10 @@ async function handlePptxDownload(item) {
   } catch (err) {
     console.error('[PPTX Viewer] Failed to intercept download:', err);
     chrome.notifications.create(`pptx-error-${item.id}`, {
-      type:     'basic',
-      iconUrl:  chrome.runtime.getURL('icons/icon128.png'),
-      title:    'PPTX Viewer — Could not open file',
-      message:  `Could not fetch "${item.filename || 'the file'}". Open it manually via the toolbar button.`,
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: 'PPTX Viewer — Could not open file',
+      message: `Could not fetch "${item.filename || 'the file'}". Open it manually via the toolbar button.`,
       priority: 1,
     });
   } finally {

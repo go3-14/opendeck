@@ -11,10 +11,10 @@ import { parseSlide, parseSlideSize } from './renderer/parse-slide.js';
 import { renderSlide } from './renderer/render-canvas.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const SESSION_KEY   = 'pptx_pending';
-const IDB_DB_NAME   = 'pptx_viewer';
+const SESSION_KEY = 'pptx_pending';
+const IDB_DB_NAME = 'pptx_viewer';
 const IDB_STORE_NAME = 'pptx_store';
-const IDB_KEY       = 'pending_file';
+const IDB_KEY = 'pending_file';
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3.0;
@@ -23,35 +23,35 @@ const THUMBNAIL_SCALE = 156 / 720; // ~0.217 — thumbnail canvas is 156px wide
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let state = {
-  slides:       [],   // SlideModel[]
+  slides: [],   // SlideModel[]
   currentIndex: 0,
-  zoom:         1.0,
-  filename:     'presentation.pptx',
+  zoom: 1.0,
+  filename: 'presentation.pptx',
 };
 
 // ─── DOM References ───────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-const overlay          = $('overlay');
-const overlayMsg       = $('overlay-message');
-const overlaySpinner   = $('overlay-spinner');
-const app              = $('app');
-const manualPicker     = $('manual-picker');
-const fileInput        = $('file-input');
-const slideCanvas      = $('slide-canvas');
-const thumbnailList    = $('thumbnail-list');
-const slideCurrentEl   = $('slide-current');
-const slideTotalEl     = $('slide-total');
-const zoomLabel        = $('zoom-label');
-const toolbarFilename  = $('toolbar-filename');
-const btnPrev          = $('btn-prev');
-const btnNext          = $('btn-next');
-const btnZoomIn        = $('btn-zoom-in');
-const btnZoomOut       = $('btn-zoom-out');
-const btnExport        = $('btn-export');
-const btnOpenFile      = $('btn-open-file');
-const exportProgress   = $('export-progress');
-const exportFill       = $('export-progress-fill');
-const exportLabel      = $('export-progress-label');
+const overlay = $('overlay');
+const overlayMsg = $('overlay-message');
+const overlaySpinner = $('overlay-spinner');
+const app = $('app');
+const manualPicker = $('manual-picker');
+const fileInput = $('file-input');
+const slideCanvas = $('slide-canvas');
+const thumbnailList = $('thumbnail-list');
+const slideCurrentEl = $('slide-current');
+const slideTotalEl = $('slide-total');
+const zoomLabel = $('zoom-label');
+const toolbarFilename = $('toolbar-filename');
+const btnPrev = $('btn-prev');
+const btnNext = $('btn-next');
+const btnZoomIn = $('btn-zoom-in');
+const btnZoomOut = $('btn-zoom-out');
+const btnExport = $('btn-export');
+const btnOpenFile = $('btn-open-file');
+const exportProgress = $('export-progress');
+const exportFill = $('export-progress-fill');
+const exportLabel = $('export-progress-label');
 
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
 function openIdb() {
@@ -59,7 +59,7 @@ function openIdb() {
     const req = indexedDB.open(IDB_DB_NAME, 1);
     req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE_NAME);
     req.onsuccess = e => resolve(e.target.result);
-    req.onerror  = e => reject(e.target.error);
+    req.onerror = e => reject(e.target.error);
   });
 }
 
@@ -96,7 +96,7 @@ function showError(message) {
 // ─── Mode Detection ───────────────────────────────────────────────────────────
 async function init() {
   const params = new URLSearchParams(location.search);
-  const mode   = params.get('mode') || 'manual';
+  const mode = params.get('mode') || 'manual';
 
   if (mode === 'intercepted') {
     showOverlay('Loading presentation…');
@@ -201,10 +201,10 @@ async function loadBytes(bytes, filename) {
     for (let i = 0; i < slideXmls.length; i++) {
       showOverlay(`Parsing slide ${i + 1} of ${slideXmls.length}…`);
 
-      const slidePath  = slidePaths[i];
-      const rels       = slideRels.get(slidePath) || {};
-      const layoutIdx  = layoutPaths.indexOf(rels.layoutPath);
-      const masterIdx  = masterPaths.indexOf(rels.masterPath);
+      const slidePath = slidePaths[i];
+      const rels = slideRels.get(slidePath) || {};
+      const layoutIdx = layoutPaths.indexOf(rels.layoutPath);
+      const masterIdx = masterPaths.indexOf(rels.masterPath);
 
       const layoutXml = layoutXmls[layoutIdx >= 0 ? layoutIdx : 0] || null;
       const masterXml = masterXmls[masterIdx >= 0 ? masterIdx : 0] || null;
@@ -260,20 +260,20 @@ async function buildImageRels(bytes, slidePaths) {
     const REL_TYPE_IMG = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
 
     for (const slidePath of slidePaths) {
-      const dir  = slidePath.substring(0, slidePath.lastIndexOf('/'));
+      const dir = slidePath.substring(0, slidePath.lastIndexOf('/'));
       const base = slidePath.substring(slidePath.lastIndexOf('/') + 1);
       const relsPath = `${dir}/_rels/${base}.rels`;
       const relsEntry = zip.file(relsPath);
       if (!relsEntry) continue;
 
       const relsXml = await relsEntry.async('text');
-      const parser  = new DOMParser();
+      const parser = new DOMParser();
       const relsDoc = parser.parseFromString(relsXml, 'application/xml');
-      const rIdMap  = new Map();
+      const rIdMap = new Map();
 
       for (const rel of relsDoc.querySelectorAll('Relationship')) {
         if ((rel.getAttribute('Type') || '') === REL_TYPE_IMG) {
-          const rId    = rel.getAttribute('Id');
+          const rId = rel.getAttribute('Id');
           const target = rel.getAttribute('Target');
           // Resolve relative target to absolute zip path
           const resolved = new URL(target, `https://x/${slidePath}`).pathname.slice(1);
@@ -296,14 +296,14 @@ async function renderThumbnails() {
 
   for (let i = 0; i < state.slides.length; i++) {
     const slide = state.slides[i];
-    const item  = document.createElement('div');
+    const item = document.createElement('div');
     item.className = 'thumbnail-item';
-    item.tabIndex  = 0;
+    item.tabIndex = 0;
     item.setAttribute('role', 'button');
     item.setAttribute('aria-label', `Slide ${i + 1}`);
     item.dataset.index = i;
 
-    const wrap   = document.createElement('div');
+    const wrap = document.createElement('div');
     wrap.className = 'thumbnail-item__canvas-wrap';
 
     const tnCanvas = document.createElement('canvas');
@@ -318,7 +318,7 @@ async function renderThumbnails() {
     item.appendChild(label);
     thumbnailList.appendChild(item);
 
-    item.addEventListener('click',  () => goToSlide(i));
+    item.addEventListener('click', () => goToSlide(i));
     item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') goToSlide(i); });
   }
 }
@@ -387,9 +387,9 @@ async function exportSlides() {
   exportLabel.textContent = 'Generating ZIP…';
   const zipBlob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(zipBlob);
-  const a   = document.createElement('a');
+  const a = document.createElement('a');
   const baseName = state.filename.replace(/\.pptx$/i, '');
-  a.href     = url;
+  a.href = url;
   a.download = `${baseName}_slides.zip`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
@@ -406,7 +406,7 @@ function wireUI() {
   btnNext.addEventListener('click', () => goToSlide(state.currentIndex + 1));
 
   // Zoom
-  btnZoomIn.addEventListener('click',  () => setZoom(state.zoom + ZOOM_STEP));
+  btnZoomIn.addEventListener('click', () => setZoom(state.zoom + ZOOM_STEP));
   btnZoomOut.addEventListener('click', () => setZoom(state.zoom - ZOOM_STEP));
 
   // Export
