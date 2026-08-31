@@ -50,3 +50,54 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
   // Hand off to the fetch + storage pipeline
   handlePptxDownload(item);
 });
+
+// ─── IndexedDB helpers ────────────────────────────────────────────────────────
+function openIdb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      e.target.result.createObjectStore(IDB_STORE_NAME);
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function writeIdb(db, value) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).put(value, IDB_KEY);
+    tx.oncomplete = resolve;
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// ─── Fetch + storage routing ──────────────────────────────────────────────────
+/**
+ * Fetches the PPTX bytes (with credentials for auth-walled downloads),
+ * stores them in session storage or IndexedDB depending on size,
+ * then opens the viewer tab.
+ */
+async function fetchAndStore(url, filename) {
+  const response = await fetch(url, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
+  }
+  const bytes = await response.arrayBuffer();
+
+  const payload = { filename, bytes, timestamp: Date.now() };
+
+  if (bytes.byteLength <= SIZE_THRESHOLD) {
+    // Small file → chrome.storage.session (structured-clone, no base64 overhead)
+    await chrome.storage.session.set({ [SESSION_KEY]: payload });
+    await chrome.storage.session.remove('pptx_idb'); // clear any stale IDB flag
+  } else {
+    // Large file → IndexedDB (unlimited size)
+    const db = await openIdb();
+    await writeIdb(db, payload);
+    db.close();
+    // Write a flag to session so viewer knows to read from IDB
+    await chrome.storage.session.set({ pptx_idb: true });
+    await chrome.storage.session.remove(SESSION_KEY);
+  }
+}
