@@ -45,11 +45,11 @@
 ## How It Works
 
 When you click a `.pptx` link or trigger a PPTX download:
-1. The background service worker detects the download via `chrome.downloads.onDeterminingFilename`
+1. The background service worker detects the download via `chrome.downloads.onCreated`
 2. The native save is cancelled immediately
 3. The file bytes are fetched (with your session cookies, so auth-walled downloads work)
-4. Bytes are stored in `chrome.storage.session` (≤ 8 MB) or IndexedDB (> 8 MB)
-5. A new tab opens with `viewer/viewer.html`, which reads the bytes and renders the slides
+4. Bytes are stored in the extension's IndexedDB under a one-time handoff ID
+5. A new tab opens with that ID in its URL; the viewer reads the bytes and renders the slides
 
 **Manual mode:** Click the toolbar icon to open the viewer and choose a local `.pptx` file, or drag-and-drop a file onto the viewer page.
 
@@ -157,4 +157,3 @@ Please keep commits focused and conventional (`feat:`, `fix:`, `docs:`, `chore:`
 ## License
 
 MIT — see [LICENSE](./LICENSE).
-

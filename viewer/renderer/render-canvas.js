@@ -458,15 +458,28 @@ async function drawShapeDispatch(ctx, shape, scale) {
 export async function renderSlide(slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1) {
   const { width, height, background, shapes } = slideModel;
 
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error(`Invalid slide dimensions: ${width}×${height}`);
+  }
+  if (!Number.isFinite(scale) || scale <= 0 || !Number.isFinite(dpr) || dpr <= 0) {
+    throw new Error(`Invalid canvas scale: ${scale} (DPR ${dpr})`);
+  }
+
   // ── High-DPI canvas setup ─────────────────────────────────────────────────
   const cssW = width  * scale;
   const cssH = height * scale;
+  // Chromium refuses oversized canvases. Keep the error in the viewer so it
+  // can fall back to a thumbnail placeholder instead of killing the tab.
+  if (cssW > 32767 || cssH > 32767 || cssW * dpr > 268000000 || cssH * dpr > 268000000) {
+    throw new Error(`Slide canvas is too large: ${Math.round(cssW)}×${Math.round(cssH)}px`);
+  }
   canvas.width  = Math.round(cssW * dpr);
   canvas.height = Math.round(cssH * dpr);
   canvas.style.width  = `${cssW}px`;
   canvas.style.height = `${cssH}px`;
 
   const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D canvas context is unavailable');
   ctx.scale(dpr, dpr); // All subsequent draws are in CSS pixels
 
   // ── Background fill ───────────────────────────────────────────────────────
@@ -474,7 +487,7 @@ export async function renderSlide(slideModel, canvas, scale = 1, dpr = window.de
   ctx.fillRect(0, 0, cssW, cssH);
 
   // ── Draw shapes in z-order (array order = z-order from OOXML) ────────────
-  for (const shape of shapes) {
+  for (const shape of shapes || []) {
     try {
       await drawShapeDispatch(ctx, shape, scale);
     } catch (err) {

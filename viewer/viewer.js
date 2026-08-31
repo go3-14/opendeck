@@ -11,10 +11,8 @@ import { parseSlide, parseSlideSize } from './renderer/parse-slide.js';
 import { renderSlide } from './renderer/render-canvas.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const SESSION_KEY = 'pptx_pending';
 const IDB_DB_NAME = 'pptx_viewer';
 const IDB_STORE_NAME = 'pptx_store';
-const IDB_KEY = 'pending_file';
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3.0;
@@ -63,13 +61,13 @@ function openIdb() {
   });
 }
 
-function readIdb(db) {
+function readIdb(db, key, consume = true) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
     const store = tx.objectStore(IDB_STORE_NAME);
-    const req = store.get(IDB_KEY);
+    const req = store.get(key);
     req.onsuccess = e => {
-      store.delete(IDB_KEY); // consume it
+      if (consume) store.delete(key);
       resolve(e.target.result);
     };
     req.onerror = e => reject(e.target.error);
@@ -111,25 +109,24 @@ async function init() {
 // ─── File Loading: from storage ───────────────────────────────────────────────
 
 /**
- * Reads the PPTX payload from chrome.storage.session or IndexedDB,
+ * Reads the PPTX payload from IndexedDB using the one-time URL handoff ID,
  * then kicks off the render pipeline.
  */
 async function loadFromStorage() {
   try {
-    // Check if the file was stored in session storage (small file)
-    const session = await chrome.storage.session.get([SESSION_KEY, 'pptx_idb']);
+    const params = new URLSearchParams(location.search);
+    let handoffId = params.get('handoff');
 
-    let payload;
-    if (session[SESSION_KEY]) {
-      payload = session[SESSION_KEY];
-      await chrome.storage.session.remove(SESSION_KEY);
-    } else if (session.pptx_idb) {
-      const db = await openIdb();
-      payload = await readIdb(db);
-      db.close();
-      await chrome.storage.session.remove('pptx_idb');
-    } else {
-      // Nothing in storage — fall back to manual picker
+    if (!handoffId) {
+      showManualPicker();
+      return;
+    }
+
+    const db = await openIdb();
+    const payload = await readIdb(db, handoffId);
+    db.close();
+
+    if (!payload?.bytes) {
       showManualPicker();
       return;
     }
@@ -157,8 +154,14 @@ async function loadFile(file) {
   }
   manualPicker.setAttribute('hidden', '');
   showOverlay(`Loading "${file.name}"…`);
-  const bytes = await file.arrayBuffer();
-  await loadBytes(bytes, file.name);
+  try {
+    const bytes = await file.arrayBuffer();
+    await loadBytes(bytes, file.name);
+  } catch (err) {
+    console.error('[PPTX Viewer] File read error:', err);
+    showError(`Could not read the file: ${err.message || err}`);
+    manualPicker.removeAttribute('hidden');
+  }
 }
 
 // ─── Core Render Pipeline ─────────────────────────────────────────────────────
@@ -234,6 +237,7 @@ async function loadBytes(bytes, filename) {
   } catch (err) {
     console.error('[PPTX Viewer] Pipeline error:', err);
     showError(`Failed to render presentation: ${err.message}`);
+    manualPicker.removeAttribute('hidden');
   }
 }
 
@@ -307,7 +311,26 @@ async function renderThumbnails() {
     wrap.className = 'thumbnail-item__canvas-wrap';
 
     const tnCanvas = document.createElement('canvas');
-    await renderSlide(slide, tnCanvas, THUMBNAIL_SCALE, 1); // no DPR for thumbnails
+    try {
+      await renderSlide(slide, tnCanvas, THUMBNAIL_SCALE, 1); // no DPR for thumbnails
+    } catch (err) {
+      // A malformed/unsupported slide must not prevent the rest of the deck
+      // from opening. Leave a visible placeholder thumbnail and continue.
+      console.warn(`[PPTX Viewer] Thumbnail ${i + 1} failed:`, err);
+      tnCanvas.width = 156;
+      tnCanvas.height = 88;
+      tnCanvas.style.width = '156px';
+      tnCanvas.style.height = '88px';
+      const fallbackCtx = tnCanvas.getContext('2d');
+      if (fallbackCtx) {
+        fallbackCtx.fillStyle = '#1e293b';
+        fallbackCtx.fillRect(0, 0, 156, 88);
+        fallbackCtx.fillStyle = '#94a3b8';
+        fallbackCtx.font = '12px sans-serif';
+        fallbackCtx.textAlign = 'center';
+        fallbackCtx.fillText('Preview unavailable', 78, 46);
+      }
+    }
     wrap.appendChild(tnCanvas);
 
     const label = document.createElement('span');

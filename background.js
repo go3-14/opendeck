@@ -4,11 +4,8 @@
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const VIEWER_URL = chrome.runtime.getURL('viewer/viewer.html');
-const SESSION_KEY = 'pptx_pending';
 const IDB_DB_NAME = 'pptx_viewer';
 const IDB_STORE_NAME = 'pptx_store';
-const IDB_KEY = 'pending_file';
-const SIZE_THRESHOLD = 8 * 1024 * 1024; // 8 MB
 
 // Deduplication: prevent processing the same download twice
 const processingIds = new Set();
@@ -29,7 +26,7 @@ function isPptx(item) {
 // ─── Download interception via onCreated ──────────────────────────────────────
 // onCreated fires as soon as Chrome registers the download.
 // We cancel it immediately, then fetch+store+open the viewer ourselves.
-// This avoids onDeterminingFilename's broken suggest() API in MV3.
+// This avoids relying on onDeterminingFilename's suggest() flow in MV3.
 chrome.downloads.onCreated.addListener((item) => {
   if (!isPptx(item)) return;
   chrome.downloads.cancel(item.id);
@@ -46,10 +43,10 @@ function openIdb() {
   });
 }
 
-function writeIdb(db, value) {
+function writeIdb(db, key, value) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
-    tx.objectStore(IDB_STORE_NAME).put(value, IDB_KEY);
+    tx.objectStore(IDB_STORE_NAME).put(value, key);
     tx.oncomplete = resolve;
     tx.onerror = (e) => reject(e.target.error);
   });
@@ -61,18 +58,15 @@ async function fetchAndStore(url, filename) {
   if (!response.ok) throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
 
   const bytes = await response.arrayBuffer();
-  const payload = { filename, bytes, timestamp: Date.now() };
-
-  if (bytes.byteLength <= SIZE_THRESHOLD) {
-    await chrome.storage.session.set({ [SESSION_KEY]: payload });
-    await chrome.storage.session.remove('pptx_idb');
-  } else {
-    const db = await openIdb();
-    await writeIdb(db, payload);
-    db.close();
-    await chrome.storage.session.set({ pptx_idb: true });
-    await chrome.storage.session.remove(SESSION_KEY);
-  }
+  // Keep the bytes in IndexedDB. chrome.storage is intended for JSON-like
+  // values; storing an ArrayBuffer there is browser/version dependent and can
+  // result in the viewer seeing no usable payload. Pass only an opaque key in
+  // the tab URL and keep the file bytes in the extension's local database.
+  const handoffId = crypto.randomUUID();
+  const db = await openIdb();
+  await writeIdb(db, handoffId, { filename, bytes, timestamp: Date.now() });
+  db.close();
+  return handoffId;
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -81,8 +75,10 @@ async function handlePptxDownload(item) {
   processingIds.add(item.id);
 
   try {
-    await fetchAndStore(item.url, item.filename || 'presentation.pptx');
-    await chrome.tabs.create({ url: `${VIEWER_URL}?mode=intercepted` });
+    const handoffId = await fetchAndStore(item.url, item.filename || 'presentation.pptx');
+    await chrome.tabs.create({
+      url: `${VIEWER_URL}?mode=intercepted&handoff=${encodeURIComponent(handoffId)}`,
+    });
   } catch (err) {
     console.error('[PPTX Viewer] Failed to intercept download:', err);
     chrome.notifications.create(`pptx-error-${item.id}`, {
