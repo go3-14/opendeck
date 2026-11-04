@@ -100,6 +100,7 @@ async function orderedSlidePaths(zip, existingSlidePaths) {
  *   slideRels: Map<string, {layoutPath: string, masterPath: string}>,
  *   imageRels: Map<string, Map<string, string>>,
  *   diagrams: Map<string, Map<string, string>>,
+ *   charts: Map<string, Map<string, string>>,
  *   tableStylesXml: string|null,
  *   presentationXml: string|null,
  *   slidePaths: string[],
@@ -111,6 +112,7 @@ async function orderedSlidePaths(zip, existingSlidePaths) {
  *   - imageRels: rId → media path for every slide, layout and master
  *   - diagrams: per slide, the SmartArt data-model rId → the pre-drawn fallback
  *     drawing XML PowerPoint stores next to it (what we render instead of the badge)
+ *   - charts: per slide, chart relationship rId → chart part XML
  *   - tableStylesXml: ppt/tableStyles.xml, if present
  */
 export async function unzipPptx(arrayBuffer) {
@@ -179,6 +181,14 @@ export async function unzipPptx(arrayBuffer) {
     }
     if (byDataModel.size) diagrams.set(slidePath, byDataModel);
   }
+  const charts = new Map();
+  for (const slidePath of slidePaths) {
+    const byRel = new Map();
+    for (const rel of (relsByPart.get(slidePath) || []).filter((r) => r.type.endsWith('/chart'))) {
+      if (zip.file(rel.target)) byRel.set(rel.id, await text(rel.target));
+    }
+    if (byRel.size) charts.set(slidePath, byRel);
+  }
   const tableStylesXml = zip.file('ppt/tableStyles.xml') ? await text('ppt/tableStyles.xml') : null;
 
   // ── Media: loaded lazily, only when a shape actually draws it ──────────────
@@ -195,6 +205,6 @@ export async function unzipPptx(arrayBuffer) {
 
   return {
     slideXmls, layoutXmls, masterXmls, themeXml, themeXmls, media,
-    slideRels, imageRels, diagrams, tableStylesXml, presentationXml, slidePaths, layoutPaths, masterPaths,
+    slideRels, imageRels, diagrams, charts, tableStylesXml, presentationXml, slidePaths, layoutPaths, masterPaths,
   };
 }

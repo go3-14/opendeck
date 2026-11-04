@@ -8,6 +8,7 @@
 // `scale` is CSS pixels per point. All model coordinates are in points.
 
 import { drawFallbackBadge } from './fallback-notice.js';
+import { drawChart } from './render-chart.js';
 
 const LINE_HEIGHT = 1.2; // line box = font size × 1.2 (typical for Calibri/Arial)
 const DESCENT = 0.25; // baseline sits this many em above the line box bottom
@@ -761,6 +762,7 @@ function drawShapeDispatch(ctx, s, K) {
       case 'shape': drawShape(ctx, s, K); break;
       case 'image': drawImageShape(ctx, s, K); break;
       case 'table': drawTable(ctx, s, K); break;
+      case 'chart': drawChart(ctx, s, K); break;
       case 'group': drawGroup(ctx, s, K); break;
       case 'unsupported':
         drawFallbackBadge(ctx, s.x * K, s.y * K, s.w * K, s.h * K, s.label || 'Unknown');

@@ -18,6 +18,7 @@
 // Shape = shape | image | table | group | unsupported  (see the parse* functions)
 
 import { resolveColorEl } from './color.js';
+import { parseChart } from './parse-chart.js';
 import { child, children, findFirst, intAttr, parseXml, path } from './xml.js';
 
 const EMU_PER_PT = 12700;
@@ -568,6 +569,12 @@ function parseGraphicFrame(el, pc) {
   const graphicData = path(el, 'graphic', 'graphicData');
   const uri = graphicData?.getAttribute('uri') || '';
   if (uri.includes('table')) return parseTable(graphicData, pc, box);
+  if (uri.includes('chart')) {
+    const chartId = findFirst(graphicData, 'chart')?.getAttribute('r:id');
+    const chartXml = chartId ? pc.charts?.get(chartId) : null;
+    const chart = chartXml ? parseChart(chartXml, pc.theme) : null;
+    if (chart) return { type: 'chart', ...box, chart };
+  }
   if (uri.includes('diagram')) {
     const dataModelId = findFirst(graphicData, 'relIds')?.getAttribute('r:dm');
     const drawingXml = dataModelId ? pc.diagrams?.get(dataModelId) : null;
@@ -923,6 +930,7 @@ export function parseSlideSize(presentationXml) {
  * @param {Map<string,string>} [inherit.masterImageRels]
  * @param {number} [inherit.slideNumber]    1-based, for slide-number fields
  * @param {Map<string,string>} [inherit.diagrams]  SmartArt data-model rId → fallback drawing XML
+ * @param {Map<string,string>} [inherit.charts]    chart relationship rId → chart part XML
  * @param {string|null} [inherit.tableStylesXml]   ppt/tableStyles.xml
  */
 export function parseSlide(slideXml, themeCtx, media, slideSize, slideImageRels = new Map(), inherit = {}) {
@@ -944,7 +952,7 @@ export function parseSlide(slideXml, themeCtx, media, slideSize, slideImageRels 
   const masterPc = { ...layoutPc, rels: inherit.masterImageRels || new Map() };
   const slidePc = {
     theme: themeCtx, media, rels: slideImageRels, slideNumber,
-    diagrams: inherit.diagrams, tableStylesXml: inherit.tableStylesXml,
+    diagrams: inherit.diagrams, charts: inherit.charts, tableStylesXml: inherit.tableStylesXml,
     placeholders: {
       layoutList: indexPlaceholders(layoutDoc),
       masterList: indexPlaceholders(masterDoc),
