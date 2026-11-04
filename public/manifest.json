@@ -3,7 +3,7 @@
   "name": "PPTX Viewer",
   "version": "0.1.0",
   "description": "Open .pptx files directly in your browser — no upload, no server, 100% client-side.",
-  "permissions": ["downloads", "notifications"],
+  "permissions": ["downloads", "notifications", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

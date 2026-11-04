@@ -6,7 +6,17 @@
 const VIEWER_URL = chrome.runtime.getURL('viewer.html');
 const IDB_DB_NAME = 'pptx_viewer';
 const IDB_STORE_NAME = 'pptx_store';
-const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+// OOXML presentations: presentation, slideshow and template files (and their macro-enabled variants).
+const PRESENTATION_EXTENSIONS = ['pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm'];
+const EXTENSION_RE = new RegExp(`\\.(${PRESENTATION_EXTENSIONS.join('|')})$`, 'i');
+const PRESENTATION_MIMES = new Set([
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
+  'application/vnd.openxmlformats-officedocument.presentationml.template',
+  'application/vnd.ms-powerpoint.presentation.macroenabled.12',
+  'application/vnd.ms-powerpoint.slideshow.macroenabled.12',
+  'application/vnd.ms-powerpoint.template.macroenabled.12',
+]);
 const STALE_HANDOFF_MS = 60 * 60 * 1000; // 1 hour
 
 // Deduplication: prevent processing the same download twice
@@ -20,19 +30,19 @@ chrome.action.onClicked.addListener(() => {
 });
 
 // ─── PPTX detection ──────────────────────────────────────────────────────────
-function urlPathEndsWithPptx(url) {
+function urlPathIsPresentation(url) {
   if (!url) return false;
   try {
-    return new URL(url).pathname.toLowerCase().endsWith('.pptx');
+    return EXTENSION_RE.test(new URL(url).pathname);
   } catch {
     return false;
   }
 }
 
 function isPptx(item) {
-  const byName = !!item.filename && item.filename.toLowerCase().endsWith('.pptx');
-  const byMime = !!item.mime && item.mime.toLowerCase() === PPTX_MIME;
-  const byUrl = urlPathEndsWithPptx(item.finalUrl) || urlPathEndsWithPptx(item.url);
+  const byName = !!item.filename && EXTENSION_RE.test(item.filename);
+  const byMime = !!item.mime && PRESENTATION_MIMES.has(item.mime.toLowerCase());
+  const byUrl = urlPathIsPresentation(item.finalUrl) || urlPathIsPresentation(item.url);
   return byName || byMime || byUrl;
 }
 
@@ -41,9 +51,21 @@ function isUndecided(item) {
   return !item.filename && !item.mime;
 }
 
-/** The service worker can only re-fetch network URLs. */
+/**
+ * The service worker can re-fetch network URLs, and local files when the user
+ * has turned on "Allow access to file URLs" for the extension (otherwise the
+ * fetch fails and the normal download carries on).
+ */
 function isFetchable(url) {
-  return /^https?:\/\//i.test(url || '');
+  return /^(https?|file):\/\//i.test(url || '');
+}
+
+function nameFromUrl(url) {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split('/').pop()) || 'presentation.pptx';
+  } catch {
+    return 'presentation.pptx';
+  }
 }
 
 function displayName(item) {
@@ -150,9 +172,9 @@ async function handlePptxDownload(item) {
 
   const url = item.finalUrl || item.url;
   if (!isFetchable(url)) {
-    // blob:/data:/file: URLs can't be re-fetched from the service worker.
+    // blob:/data: URLs can't be re-fetched from the service worker.
     // Leave the native download untouched.
-    console.warn('[PPTX Viewer] Not intercepting non-http(s) download:', url);
+    console.warn('[PPTX Viewer] Not intercepting download with an unsupported URL:', url);
     return;
   }
 
@@ -179,10 +201,48 @@ async function handlePptxDownload(item) {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon128.png'),
       title: 'PPTX Viewer — Could not open file',
-      message: 'The file will download normally. Open it later via the toolbar button.',
+      message: /^file:/i.test(url)
+        ? 'To open local files directly, turn on "Allow access to file URLs" for this extension. The file will download normally.'
+        : 'The file will download normally. Open it later via the toolbar button.',
       priority: 1,
     });
   } finally {
     processingIds.delete(item.id);
   }
 }
+
+// ─── Right-click a link → "Open in PPTX Viewer" ───────────────────────────────
+const MENU_ID = 'open-in-viewer';
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: MENU_ID,
+    title: 'Open in PPTX Viewer',
+    contexts: ['link'],
+    targetUrlPatterns: PRESENTATION_EXTENSIONS.flatMap((ext) => [
+      `*://*/*.${ext}`, `*://*/*.${ext}?*`, `file:///*.${ext}`,
+    ]),
+  });
+});
+
+chrome.contextMenus.onClicked.addListener(async (info) => {
+  if (info.menuItemId !== MENU_ID || !info.linkUrl) return;
+  const url = info.linkUrl;
+  try {
+    const handoffId = await fetchAndStore(url, nameFromUrl(url));
+    await chrome.tabs.create({
+      url: `${VIEWER_URL}?mode=intercepted&handoff=${encodeURIComponent(handoffId)}`,
+    });
+  } catch (err) {
+    console.error('[PPTX Viewer] Could not open link:', err);
+    chrome.notifications.create(`pptx-link-error-${Date.now()}`, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: 'PPTX Viewer — Could not open link',
+      message: /^file:/i.test(url)
+        ? 'Turn on "Allow access to file URLs" for this extension to open local files.'
+        : 'The file could not be fetched.',
+      priority: 1,
+    });
+  }
+});
