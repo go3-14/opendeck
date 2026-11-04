@@ -1,6 +1,6 @@
 # Renderer test deck
 
-`make-fixtures.mjs` generates a 6-slide deck that exercises the renderer's inheritance and drawing features. There is no automated runner yet; check it in a browser.
+`make-fixtures.mjs` generates an 8-slide deck that exercises the renderer's inheritance and drawing features. `npm test` (see `smoke.mjs`) checks most of the table below automatically; the list is also the manual checklist.
 
 ```bash
 npm run build
@@ -18,6 +18,8 @@ Open `http://127.0.0.1:8767/viewer.html`, choose `dist/rich.pptx` (or feed it to
 | 4 | Dark `#111111` background and white text: the slide's colour-map override maps `bg1`→`dk1` and `tx1`→`lt1`. |
 | 5 | Four large noisy pictures (red, green, blue, yellow tint) over a picture background. Used for the progressive-paint check below; the file is about 25 MB. |
 | 6 | Animation builds. In the normal view all three squares (red, green, blue) are visible. In **Present**: start shows none; click 1 shows red; click 2 shows green and hides red; click 3 shows blue (green stays). Going back (left arrow) undoes the last build. |
+| 7 | SmartArt (two rounded boxes, "Step A" purple and "Step B" orange) drawn from the saved fallback drawing; a table styled by `tableStyles.xml` (blue header, banded rows); a freeform shape with a half-ellipse bottom; a rectangle with a soft drop shadow. |
+| 8 | Three charts from cached data: clustered columns (red/blue), a line chart with markers (green/orange) and a pie with percent labels (first slice yellow). |
 
 ## Progressive-paint check (slides must appear whole)
 
@@ -28,3 +30,5 @@ A slide must never be visible half-drawn. With the deck loaded in the viewer, re
 3. Every distinct state seen must equal one of the saved finished-slide signatures (plus the initial empty canvas), and the last one must be slide 5. Any other state is a half-drawn slide.
 
 Before the preload/atomic-draw fix, jumping to slide 5 on a cold page produced six states (blank, background only, then each picture arriving). Now it produces the empty canvas followed by the complete slide.
+
+Speaker notes are on slide 6 ("First note line"/"Second note line"). Slide 2 has a fade and slide 3 a push transition (visible in the slideshow only; skipped when the OS asks for reduced motion).
