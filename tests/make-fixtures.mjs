@@ -13,6 +13,7 @@
 // Slide 6  animation builds (entrance/exit on click) for the slideshow
 // Slide 7  SmartArt fallback drawing, table style, freeform shape, drop shadow
 // Slide 8  charts: clustered column, line, pie
+// Also: speaker notes on slide 6; slide 2 has a fade, slide 3 a push transition
 //
 // What each slide should look like is listed in tests/README.md.
 
@@ -402,6 +403,16 @@ const slide8 = slideXml(
   chartFrame(10, 0.4, 'rId8') + chartFrame(11, 4.7, 'rId9') + chartFrame(12, 9, 'rId10'),
 );
 
+// Speaker notes for slide 6, and slide transitions (slide 2: fade, slide 3: push from the right).
+const notesXml =
+  `${HEAD}<p:notes ${NS}><p:cSld><p:spTree>${grpHead}` +
+  '<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image"/><p:cNvSpPr/><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>' +
+  '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes"/><p:cNvSpPr/><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/>' +
+  '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>First note line</a:t></a:r></a:p><a:p><a:r><a:rPr lang="en-US"/><a:t>Second note line</a:t></a:r></a:p></p:txBody></p:sp>' +
+  '</p:spTree></p:cSld></p:notes>';
+const withTransition = (xml, effect) =>
+  xml.replace('</p:clrMapOvr>', `</p:clrMapOvr><p:transition spd="med">${effect}</p:transition>`);
+
 // ─── Package ──────────────────────────────────────────────────────────────────
 const zip = new JSZip();
 zip.file('[Content_Types].xml', `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/></Types>`);
@@ -427,10 +438,11 @@ for (const n of [1, 2]) {
 }
 [[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2], [slide5, 2], [slide6, 2], [slide7, 2], [slide8, 2]].forEach(([xml, layout], i) => {
   const n = i + 1;
-  zip.file(`ppt/slides/slide${n}.xml`, xml);
+  zip.file(`ppt/slides/slide${n}.xml`, n === 2 ? withTransition(xml, '<p:fade/>') : n === 3 ? withTransition(xml, '<p:push dir="l"/>') : xml);
   zip.file(`ppt/slides/_rels/slide${n}.xml.rels`, rels(
     rel('rId1', 'slideLayout', `../slideLayouts/slideLayout${layout}.xml`) +
     (n === 3 ? rel('rId2', 'image', '../media/image1.png') : '') +
+    (n === 6 ? rel('rId9', 'notesSlide', '../notesSlides/notesSlide1.xml') : '') +
     (n === 8 ? [1, 2, 3].map((k) => rel(`rId${k + 7}`, 'chart', `../charts/chart${k}.xml`)).join('') : '') +
     (n === 7
       ? rel('rId8', 'diagramData', '../diagrams/data1.xml') +
@@ -442,6 +454,7 @@ zip.file('ppt/media/image1.png', quadrantPng());
 zip.file('ppt/diagrams/data1.xml', diagramData);
 zip.file('ppt/diagrams/drawing1.xml', diagramDrawing);
 zip.file('ppt/tableStyles.xml', tableStyles);
+zip.file('ppt/notesSlides/notesSlide1.xml', notesXml);
 zip.file('ppt/charts/chart1.xml', columnChart);
 zip.file('ppt/charts/chart2.xml', lineChart);
 zip.file('ppt/charts/chart3.xml', pieChart);
