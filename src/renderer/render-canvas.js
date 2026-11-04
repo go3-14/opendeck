@@ -3,6 +3,7 @@
 //
 // export async function renderSlide(slideModel, canvas, scale, dpr, options) → boolean
 // export async function preloadSlideImages(slideModel) → void
+// export function animationStepCount(slideModel) → number
 //
 // `scale` is CSS pixels per point. All model coordinates are in points.
 
@@ -681,8 +682,13 @@ function drawGroup(ctx, s, K) {
   ctx.restore();
 }
 
+// Ids of animated shapes that are hidden in the build step being drawn.
+// Set only for the duration of one (synchronous) slide draw.
+let hiddenNow = null;
+
 function drawShapeDispatch(ctx, s, K) {
   if (!s) return;
+  if (s.id != null && hiddenNow?.has(s.id)) return;
   try {
     switch (s.type) {
       case 'shape': drawShape(ctx, s, K); break;
@@ -702,18 +708,40 @@ function drawShapeDispatch(ctx, s, K) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/** Number of clicks needed to play all of a slide's builds (0 = not animated). */
+export function animationStepCount(slide) {
+  return slide.animation?.clickSteps.length ?? 0;
+}
+
+/**
+ * Ids of the shapes hidden after `step` clicks (0 = slide just appeared).
+ * `step` undefined means "no animation": everything is shown, like a static view.
+ */
+function hiddenIdsFor(slide, step) {
+  const anim = slide.animation;
+  if (!anim || step === undefined) return null;
+  const hidden = new Set(anim.initialHidden);
+  for (const effects of anim.clickSteps.slice(0, step)) {
+    for (const { id, show } of effects) {
+      if (show) hidden.delete(id);
+      else hidden.add(id);
+    }
+  }
+  return hidden;
+}
+
 const RENDER_CACHE_LIMIT = 8;
 const renderCache = new Map(); // key → finished off-screen canvas (insertion order = LRU)
 const slideIds = new WeakMap();
 let nextSlideId = 1;
 
-function cacheKey(slide, scale, dpr) {
+function cacheKey(slide, scale, dpr, step) {
   if (!slideIds.has(slide)) slideIds.set(slide, nextSlideId++);
-  return `${slideIds.get(slide)}|${scale}|${dpr}`;
+  return `${slideIds.get(slide)}|${scale}|${dpr}|${step ?? 'all'}`;
 }
 
 /** Draws a whole slide into a new off-screen canvas. Synchronous: images must be preloaded. */
-function drawSlideOffscreen(slide, scale, dpr) {
+function drawSlideOffscreen(slide, scale, dpr, step) {
   const { width, height, background, shapes } = slide;
   const cssW = width * scale;
   const cssH = height * scale;
@@ -739,7 +767,12 @@ function drawSlideOffscreen(slide, scale, dpr) {
     if (img) blit(ctx, img, background.crop, 0, 0, cssW, cssH);
   }
 
-  for (const shape of shapes || []) drawShapeDispatch(ctx, shape, scale); // z-order = array order
+  hiddenNow = hiddenIdsFor(slide, step);
+  try {
+    for (const shape of shapes || []) drawShapeDispatch(ctx, shape, scale); // z-order = array order
+  } finally {
+    hiddenNow = null;
+  }
   return off;
 }
 
@@ -765,13 +798,15 @@ function commit(canvas, off, scale, slide) {
  * @param {HTMLCanvasElement} canvas
  * @param {number} scale  CSS pixels per point (1 = 1pt = 1px)
  * @param {number} [dpr]  defaults to window.devicePixelRatio
- * @param {{ signal?: AbortSignal, cache?: boolean }} [options]
+ * @param {{ signal?: AbortSignal, cache?: boolean, step?: number }} [options]
  *        signal: abandon the render (canvas untouched) if aborted;
- *        cache: keep the finished slide so showing it again is instant
+ *        cache: keep the finished slide so showing it again is instant;
+ *        step: draw the slide after this many animation clicks (0 = as it first
+ *        appears); omit to draw every shape, as a static view does
  * @returns {Promise<boolean>} true if the canvas was updated, false if aborted
  */
 export async function renderSlide(
-  slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1, { signal, cache = false } = {},
+  slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1, { signal, cache = false, step } = {},
 ) {
   const { width, height } = slideModel;
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -781,14 +816,14 @@ export async function renderSlide(
     throw new Error(`Invalid canvas scale: ${scale} (DPR ${dpr})`);
   }
 
-  const key = cache ? cacheKey(slideModel, scale, dpr) : null;
+  const key = cache ? cacheKey(slideModel, scale, dpr, step) : null;
   let off = key ? renderCache.get(key) : null;
 
   if (!off) {
     if (signal?.aborted) return false;
     await preloadSlideImages(slideModel);
     if (signal?.aborted) return false;
-    off = drawSlideOffscreen(slideModel, scale, dpr);
+    off = drawSlideOffscreen(slideModel, scale, dpr, step);
     if (key) {
       renderCache.set(key, off);
       while (renderCache.size > RENDER_CACHE_LIMIT) renderCache.delete(renderCache.keys().next().value);

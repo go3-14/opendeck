@@ -9,7 +9,8 @@
 //   - non-placeholder master and layout shapes are drawn behind the slide
 //   - theme <p:style> references supply default fills, lines and text colour
 //
-// SlideModel = { width, height, background: Fill, shapes: Shape[] }
+// SlideModel = { width, height, background: Fill, shapes: Shape[], animation }
+// animation = null | { initialHidden: id[], clickSteps: [[{id, show}]] }  (see parseAnimations)
 // Fill  = {type:'none'} | {type:'solid', color} |
 //         {type:'gradient', stops:[{pos,color}], angle, radial} |
 //         {type:'image', loadBlob, crop}
@@ -188,6 +189,13 @@ function getPh(el) {
 function isHidden(el) {
   const nv = Array.from(el.children).find((c) => c.localName.startsWith('nv'));
   return child(nv, 'cNvPr')?.getAttribute('hidden') === '1';
+}
+
+/** The shape's <p:cNvPr id>, which animations refer to (spid). */
+function shapeId(el) {
+  const nv = Array.from(el.children).find((c) => c.localName.startsWith('nv'));
+  const id = parseInt(child(nv, 'cNvPr')?.getAttribute('id') || '', 10);
+  return Number.isNaN(id) ? undefined : id;
 }
 
 /** Collapses placeholder types that share a master placeholder. */
@@ -595,6 +603,9 @@ function parseShapeList(el, pc) {
     }
     default: break;
   }
+  // Only slide shapes get an id: layout/master ids overlap with the slide's own,
+  // and animations only ever target the slide's shapes.
+  if (shape && pc.placeholders) shape.id = shapeId(el);
   return shape ? [shape] : [];
 }
 
@@ -631,6 +642,72 @@ function parseBackground(doc, pc) {
     return styleEl ? parseFillEl(styleEl, pc, color) : color ? { type: 'solid', color } : null;
   }
   return null;
+}
+
+// ─── Animations ───────────────────────────────────────────────────────────────
+
+/**
+ * Reads the main animation sequence (<p:timing>) into build steps.
+ *
+ * Only what decides whether a shape is visible is modelled: entrance effects
+ * show a shape, exit effects hide it, everything else (emphasis, motion,
+ * timing, easing) is ignored. Each click starts a new step; effects that play
+ * automatically are folded into the step before them.
+ *
+ * @returns {{ initialHidden: number[], clickSteps: Array<Array<{id:number, show:boolean}>> } | null}
+ *   initialHidden: shape ids hidden when the slide first appears.
+ *   clickSteps[k]: visibility changes caused by the (k+1)-th click.
+ */
+function parseAnimations(slideDoc) {
+  const timing = findFirst(slideDoc, 'timing');
+  const mainSeq = timing && Array.from(timing.getElementsByTagName('*'))
+    .find((el) => el.localName === 'cTn' && el.getAttribute('nodeType') === 'mainSeq');
+  if (!mainSeq) return null;
+
+  // Effects of one step element, in document order.
+  const effectsOf = (stepEl) => {
+    const out = [];
+    for (const cTn of stepEl.getElementsByTagName('*')) {
+      const cls = cTn.localName === 'cTn' ? cTn.getAttribute('presetClass') : null;
+      if (cls !== 'entr' && cls !== 'exit') continue;
+      const ids = new Set();
+      for (const t of cTn.getElementsByTagName('*')) {
+        if (t.localName === 'spTgt') ids.add(parseInt(t.getAttribute('spid'), 10));
+      }
+      for (const id of ids) if (!Number.isNaN(id)) out.push({ id, show: cls === 'entr' });
+    }
+    return out;
+  };
+  // A step waits for a click when its start condition is delay="indefinite".
+  const isClick = (stepEl) =>
+    path(stepEl, 'cTn', 'stCondLst', 'cond')?.getAttribute('delay') === 'indefinite';
+
+  const leadingAuto = [];
+  const clickSteps = [];
+  const all = [];
+  for (const stepEl of children(child(mainSeq, 'childTnLst'), 'par')) {
+    const effects = effectsOf(stepEl);
+    all.push(...effects);
+    if (isClick(stepEl)) clickSteps.push(effects);
+    else if (clickSteps.length) clickSteps[clickSteps.length - 1].push(...effects);
+    else leadingAuto.push(...effects);
+  }
+
+  // A shape whose first effect is an entrance starts hidden.
+  const hidden = new Set();
+  const seen = new Set();
+  for (const { id, show } of all) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (show) hidden.add(id);
+  }
+  for (const { id, show } of leadingAuto) {
+    if (show) hidden.delete(id);
+    else hidden.add(id);
+  }
+
+  if (!clickSteps.length && !hidden.size) return null;
+  return { initialHidden: [...hidden], clickSteps };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -704,5 +781,5 @@ export function parseSlide(slideXml, themeCtx, media, slideSize, slideImageRels 
   const spTree = findFirst(slideDoc, 'spTree');
   for (const el of spTree?.children || []) shapes.push(...parseShapeList(el, slidePc));
 
-  return { width, height, background, shapes };
+  return { width, height, background, shapes, animation: parseAnimations(slideDoc) };
 }

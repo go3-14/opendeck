@@ -10,6 +10,8 @@ interface Options {
   limited?: boolean
   /** Render nothing until true (e.g. thumbnail not yet scrolled into view). */
   enabled?: boolean
+  /** Animation build step to draw; omit to draw every shape. */
+  step?: number
 }
 
 /**
@@ -24,7 +26,7 @@ export function useSlideRender(
   slide: Slide | undefined,
   scale: number,
   dpr?: number,
-  { cache = false, limited = false, enabled = true }: Options = {},
+  { cache = false, limited = false, enabled = true, step }: Options = {},
 ) {
   useEffect(() => {
     const canvas = canvasRef.current
@@ -34,11 +36,11 @@ export function useSlideRender(
     const task = () =>
       controller.signal.aborted
         ? Promise.resolve(false)
-        : renderSlide(slide, canvas, scale, dpr, { signal: controller.signal, cache })
+        : renderSlide(slide, canvas, scale, dpr, { signal: controller.signal, cache, step })
 
     const run = limited ? thumbnailLimiter(task) : task()
     run.catch((err: unknown) => console.warn('[PPTX Viewer] Slide render failed:', err))
 
     return () => controller.abort()
-  }, [canvasRef, slide, scale, dpr, cache, limited, enabled])
+  }, [canvasRef, slide, scale, dpr, cache, limited, enabled, step])
 }
