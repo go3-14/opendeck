@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { consumeHandoff } from '@/lib/idb'
+import { prefetchAround } from '@/lib/prefetch'
 import { exportSlidesAsZip, loadPptx, type Slide } from '@/lib/pptx'
 import { useSlideRender } from '@/lib/useSlideRender'
 import { cn } from '@/lib/utils'
@@ -16,15 +17,39 @@ type Status = 'empty' | 'loading' | 'ready'
 
 function SlideCanvas({ slide, zoom }: { slide: Slide; zoom: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
-  useSlideRender(ref, slide, zoom)
-  return <canvas ref={ref} className="block border bg-white" aria-label="Current slide" />
+  useSlideRender(ref, slide, zoom, undefined, { cache: true })
+  return (
+    <canvas
+      ref={ref}
+      className="block border bg-white"
+      style={{ width: slide.width * zoom, height: slide.height * zoom }}
+      aria-label="Current slide"
+    />
+  )
 }
 
 function Thumbnail({
   slide, index, active, onSelect,
 }: { slide: Slide; index: number; active: boolean; onSelect: () => void }) {
   const ref = useRef<HTMLCanvasElement>(null)
-  useSlideRender(ref, slide, 144 / slide.width, 1)
+  // Render only once the thumbnail is near the viewport, through a shared queue.
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || visible) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '300px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [visible])
+  useSlideRender(ref, slide, 144 / slide.width, 1, { enabled: visible, limited: true })
 
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: 'nearest' })
@@ -42,6 +67,7 @@ function Thumbnail({
       <canvas
         ref={ref}
         className={cn('block border bg-white', active && 'outline-2 outline-offset-1 outline-primary')}
+        style={{ width: 144, height: (144 * slide.height) / slide.width }}
       />
     </button>
   )
@@ -126,6 +152,11 @@ export default function App() {
     (delta: number) => setZoom((z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round((z + delta) * 100) / 100))),
     [],
   )
+
+  // Keep the neighbouring slides' images decoded so paging is instant.
+  useEffect(() => {
+    if (status === 'ready') prefetchAround(slides, index)
+  }, [status, slides, index])
 
   // Keyboard shortcuts
   useEffect(() => {

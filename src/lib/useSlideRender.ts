@@ -1,33 +1,44 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, type RefObject } from 'react'
 import { renderSlide } from '@/renderer/render-canvas.js'
 import type { Slide } from './pptx'
+import { thumbnailLimiter } from './renderQueue'
+
+interface Options {
+  /** Keep the finished slide so showing it again is instant (main canvas). */
+  cache?: boolean
+  /** Wait for a free slot in the shared thumbnail queue before rendering. */
+  limited?: boolean
+  /** Render nothing until true (e.g. thumbnail not yet scrolled into view). */
+  enabled?: boolean
+}
 
 /**
  * Draws a slide onto a canvas whenever the slide or scale changes.
- * Draws are queued per canvas: renderSlide resizes the canvas and awaits image
- * decoding, so overlapping draws on the same canvas would interleave.
+ *
+ * Latest request wins: a newer request aborts the previous one, and renderSlide
+ * only touches the canvas once a slide is completely ready, so the canvas keeps
+ * showing the previous slide until the next one can be shown whole.
  */
 export function useSlideRender(
   canvasRef: RefObject<HTMLCanvasElement | null>,
   slide: Slide | undefined,
   scale: number,
   dpr?: number,
+  { cache = false, limited = false, enabled = true }: Options = {},
 ) {
-  const queue = useRef<Promise<void>>(Promise.resolve())
-
   useEffect(() => {
-    let cancelled = false
-    queue.current = queue.current.then(async () => {
-      const canvas = canvasRef.current
-      if (cancelled || !canvas || !slide) return
-      try {
-        await renderSlide(slide, canvas, scale, dpr)
-      } catch (err) {
-        console.warn('[PPTX Viewer] Slide render failed:', err)
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [canvasRef, slide, scale, dpr])
+    const canvas = canvasRef.current
+    if (!enabled || !slide || !canvas) return
+
+    const controller = new AbortController()
+    const task = () =>
+      controller.signal.aborted
+        ? Promise.resolve(false)
+        : renderSlide(slide, canvas, scale, dpr, { signal: controller.signal, cache })
+
+    const run = limited ? thumbnailLimiter(task) : task()
+    run.catch((err: unknown) => console.warn('[PPTX Viewer] Slide render failed:', err))
+
+    return () => controller.abort()
+  }, [canvasRef, slide, scale, dpr, cache, limited, enabled])
 }
