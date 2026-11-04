@@ -1,10 +1,23 @@
 {
   "manifest_version": 3,
   "name": "PPTX Viewer",
-  "version": "0.1.0",
-  "description": "Open .pptx files directly in your browser — no upload, no server, 100% client-side.",
-  "permissions": ["downloads", "notifications", "contextMenus"],
-  "optional_host_permissions": ["<all_urls>"],
+  "version": "1.0.0",
+  "description": "View PowerPoint presentations in your browser, with search and a full-screen slideshow. Files never leave your device.",
+  "homepage_url": "https://github.com/go3-14/pptx_viewer_extension",
+  "minimum_chrome_version": "111",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "downloads",
+    "notifications",
+    "contextMenus"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js"
   },
