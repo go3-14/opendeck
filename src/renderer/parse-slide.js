@@ -1,569 +1,708 @@
-// viewer/renderer/parse-slide.js
-// Walks the OOXML <p:spTree> shape tree and converts to a SlideModel
-// with all coordinates in points (pt = emu / 12700).
+// src/renderer/parse-slide.js
+// Converts a slide (plus its layout and master) into a renderer-neutral
+// SlideModel. All coordinates are in points (EMU / 12700).
 //
-// export function parseSlide(slideXml, themeCtx, layoutXml, masterXml, media) → SlideModel
+// Inheritance handled here:
+//   - placeholder geometry, fill, line, body properties and list styles flow
+//     master → layout → slide
+//   - master text styles (title / body / other) provide default text formatting
+//   - non-placeholder master and layout shapes are drawn behind the slide
+//   - theme <p:style> references supply default fills, lines and text colour
+//
+// SlideModel = { width, height, background: Fill, shapes: Shape[] }
+// Fill  = {type:'none'} | {type:'solid', color} |
+//         {type:'gradient', stops:[{pos,color}], angle, radial} |
+//         {type:'image', loadBlob, crop}
+// Line  = { color, width, dash, head, tail }
+// Shape = shape | image | table | group | unsupported  (see the parse* functions)
 
-'use strict';
+import { resolveColorEl } from './color.js';
+import { child, children, findFirst, intAttr, parseXml, path } from './xml.js';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const EMU_PER_PT = 12700;
-const DEFAULT_SLIDE_WIDTH_EMU  = 9144000; // 720pt / 10 inches
-const DEFAULT_SLIDE_HEIGHT_EMU = 6858000; // 540pt / 7.5 inches
+const DEFAULT_WIDTH_PT = 9144000 / EMU_PER_PT; // 720
+const DEFAULT_HEIGHT_PT = 6858000 / EMU_PER_PT; // 540
+const NONE = { type: 'none' };
 
-// ─── XML Helpers ─────────────────────────────────────────────────────────────
-const _parser = new DOMParser();
+const emu = (v) => (parseInt(v || '0', 10) || 0) / EMU_PER_PT;
 
-function parseXml(xmlStr) {
-  if (!xmlStr) return null;
-  return _parser.parseFromString(xmlStr, 'application/xml');
+// ─── Transforms ───────────────────────────────────────────────────────────────
+
+/** <a:xfrm> / <p:xfrm> → box, or null when absent so callers can inherit. */
+function parseXfrm(xfrmEl) {
+  if (!xfrmEl) return null;
+  const off = child(xfrmEl, 'off');
+  const ext = child(xfrmEl, 'ext');
+  const chOff = child(xfrmEl, 'chOff');
+  const chExt = child(xfrmEl, 'chExt');
+  return {
+    x: emu(off?.getAttribute('x')),
+    y: emu(off?.getAttribute('y')),
+    w: emu(ext?.getAttribute('cx')),
+    h: emu(ext?.getAttribute('cy')),
+    rot: intAttr(xfrmEl, 'rot', 0) / 60000,
+    flipH: xfrmEl.getAttribute('flipH') === '1',
+    flipV: xfrmEl.getAttribute('flipV') === '1',
+    chX: emu(chOff?.getAttribute('x')),
+    chY: emu(chOff?.getAttribute('y')),
+    chW: emu(chExt?.getAttribute('cx')),
+    chH: emu(chExt?.getAttribute('cy')),
+  };
 }
 
-/** Returns all child elements with the given localName (any namespace). */
-function children(el, localName) {
-  if (!el) return [];
-  const out = [];
-  for (const child of el.children) {
-    if (child.localName === localName) out.push(child);
+// ─── Fills and lines ──────────────────────────────────────────────────────────
+
+const FILL_TAGS = ['solidFill', 'gradFill', 'blipFill', 'pattFill', 'noFill', 'grpFill'];
+
+/** The first fill element among an element's children (spPr, bgPr, tcPr...). */
+function fillChild(parent) {
+  if (!parent) return null;
+  for (const c of parent.children) if (FILL_TAGS.includes(c.localName)) return c;
+  return null;
+}
+
+/** blip r:embed → media loader function (or null). */
+function blipLoader(blipEl, pc) {
+  const rId = blipEl?.getAttribute('r:embed') ||
+    blipEl?.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
+  const mediaPath = rId ? pc.rels.get(rId) : null;
+  return (mediaPath && pc.media.get(mediaPath)) || null;
+}
+
+function parseSrcRect(el) {
+  const r = child(el, 'srcRect');
+  if (!r) return null;
+  const f = (n) => intAttr(r, n, 0) / 100000;
+  const crop = { l: f('l'), t: f('t'), r: f('r'), b: f('b') };
+  return crop.l || crop.t || crop.r || crop.b ? crop : null;
+}
+
+/** Parses one fill element. `phClr` is substituted for schemeClr "phClr". */
+function parseFillEl(fillEl, pc, phClr) {
+  if (!fillEl) return NONE;
+  switch (fillEl.localName) {
+    case 'solidFill': {
+      const color = resolveColorEl(fillEl.firstElementChild, pc.theme, phClr);
+      return color ? { type: 'solid', color } : NONE;
+    }
+    case 'gradFill': {
+      const gsLst = child(fillEl, 'gsLst');
+      const stops = children(gsLst, 'gs').map((gs) => ({
+        pos: intAttr(gs, 'pos', 0) / 100000,
+        color: resolveColorEl(gs.firstElementChild, pc.theme, phClr) || '#000000',
+      }));
+      if (!stops.length) return NONE;
+      const lin = child(fillEl, 'lin');
+      return {
+        type: 'gradient',
+        stops,
+        angle: lin ? intAttr(lin, 'ang', 0) / 60000 : 90,
+        radial: !lin && !!child(fillEl, 'path'),
+      };
+    }
+    case 'blipFill': {
+      const loadBlob = blipLoader(child(fillEl, 'blip'), pc);
+      return loadBlob ? { type: 'image', loadBlob, crop: parseSrcRect(fillEl) } : NONE;
+    }
+    case 'pattFill': {
+      // Patterns are approximated by their foreground colour.
+      const color = resolveColorEl(child(fillEl, 'fgClr')?.firstElementChild, pc.theme, phClr);
+      return color ? { type: 'solid', color } : NONE;
+    }
+    default:
+      return NONE;
+  }
+}
+
+/** <a:ln> → partial line description (only the properties it actually sets). */
+function parseLn(lnEl, pc, phClr) {
+  const out = {};
+  if (!lnEl) return out;
+  if (lnEl.hasAttribute('w')) out.width = emu(lnEl.getAttribute('w'));
+  const fill = fillChild(lnEl);
+  if (fill) {
+    if (fill.localName === 'noFill') out.none = true;
+    else {
+      out.none = false;
+      const parsed = parseFillEl(fill, pc, phClr);
+      if (parsed.type === 'solid') out.color = parsed.color;
+      else if (parsed.type === 'gradient') out.color = parsed.stops[0].color;
+    }
+  }
+  const dash = child(lnEl, 'prstDash')?.getAttribute('val');
+  if (dash) out.dash = dash;
+  for (const [tag, key] of [['headEnd', 'head'], ['tailEnd', 'tail']]) {
+    const end = child(lnEl, tag);
+    const type = end?.getAttribute('type');
+    if (type && type !== 'none') {
+      out[key] = { type, w: end.getAttribute('w') || 'med', len: end.getAttribute('len') || 'med' };
+    }
   }
   return out;
 }
 
-/** Returns the first child element with the given localName. */
-function child(el, localName) {
-  if (!el) return null;
+function finishLine(partial) {
+  if (!partial || partial.none || !partial.color) return null;
+  return {
+    color: partial.color,
+    width: partial.width ?? 1,
+    dash: partial.dash || null,
+    head: partial.head || null,
+    tail: partial.tail || null,
+  };
+}
+
+// ─── <p:style> references ─────────────────────────────────────────────────────
+
+/** Reads a shape's <p:style> into theme-derived defaults. */
+function readStyle(spEl, pc) {
+  const styleEl = child(spEl, 'style');
+  if (!styleEl) return null;
+  const refColor = (name) => {
+    const ref = child(styleEl, name);
+    return { idx: intAttr(ref, 'idx', 0), color: resolveColorEl(ref?.firstElementChild, pc.theme) };
+  };
+  const fillRef = refColor('fillRef');
+  const lnRef = refColor('lnRef');
+  const fontRef = refColor('fontRef');
+
+  const fillEl = fillRef.idx > 0 ? pc.theme.fmt.fills[fillRef.idx - 1] : null;
+  const lnEl = lnRef.idx > 0 ? pc.theme.fmt.lines[lnRef.idx - 1] : null;
+  return {
+    fill: fillEl ? parseFillEl(fillEl, pc, fillRef.color) : null,
+    line: lnEl ? parseLn(lnEl, pc, lnRef.color) : null,
+    fontColor: fontRef.color,
+  };
+}
+
+// ─── Placeholders ─────────────────────────────────────────────────────────────
+
+/** The <p:ph> info of a shape element, or null for ordinary shapes. */
+function getPh(el) {
+  const nv = Array.from(el.children).find((c) => c.localName.startsWith('nv'));
+  const ph = path(nv, 'nvPr', 'ph');
+  if (!ph) return null;
+  return { type: ph.getAttribute('type'), idx: ph.getAttribute('idx') };
+}
+
+function isHidden(el) {
+  const nv = Array.from(el.children).find((c) => c.localName.startsWith('nv'));
+  return child(nv, 'cNvPr')?.getAttribute('hidden') === '1';
+}
+
+/** Collapses placeholder types that share a master placeholder. */
+function normType(type) {
+  const t = type || 'obj';
+  if (t === 'ctrTitle') return 'title';
+  if (['subTitle', 'obj', 'tbl', 'chart', 'dgm', 'media', 'clipArt', 'pic'].includes(t)) return 'body';
+  return t;
+}
+
+function indexPlaceholders(doc) {
+  const list = [];
+  const spTree = findFirst(doc, 'spTree');
+  if (!spTree) return list;
+  for (const el of spTree.children) {
+    const ph = getPh(el);
+    if (ph) list.push({ ph, el });
+  }
+  return list;
+}
+
+function findPlaceholder(list, ph, useIdx) {
+  if (!ph || !list.length) return null;
+  if (useIdx && ph.idx != null) {
+    const byIdx = list.find((x) => x.ph.idx === ph.idx);
+    if (byIdx) return byIdx;
+  }
+  const type = ph.type || 'obj';
+  return (
+    list.find((x) => (x.ph.type || 'obj') === type) ||
+    list.find((x) => normType(x.ph.type) === normType(type)) ||
+    null
+  );
+}
+
+/** Elements this placeholder inherits from, ordered master → layout. */
+function placeholderParents(ph, pc) {
+  if (!ph || !pc.placeholders) return [];
+  const layoutMatch = findPlaceholder(pc.placeholders.layoutList, ph, true);
+  const masterMatch = findPlaceholder(pc.placeholders.masterList, layoutMatch ? layoutMatch.ph : ph, false);
+  return [masterMatch?.el, layoutMatch?.el].filter(Boolean);
+}
+
+function txStyleKind(ph) {
+  const t = normType(ph?.type);
+  if (t === 'title') return 'titleStyle';
+  if (t === 'body') return 'bodyStyle';
+  return 'otherStyle';
+}
+
+// ─── Text ─────────────────────────────────────────────────────────────────────
+
+const DEFAULT_FONT_PT = 18;
+
+function readSpacing(el) {
+  const pct = child(el, 'spcPct');
+  if (pct) return { pct: intAttr(pct, 'val', 100000) / 100000 };
+  const pts = child(el, 'spcPts');
+  if (pts) return { pts: intAttr(pts, 'val', 0) / 100 };
+  return undefined;
+}
+
+/** <a:rPr> / <a:defRPr> → partial run properties. */
+function readRPr(el, pc) {
+  const out = {};
+  if (!el) return out;
+  if (el.hasAttribute('sz')) out.sz = intAttr(el, 'sz', 1800) / 100;
+  const flag = (name) => {
+    const v = el.getAttribute(name);
+    return v === '1' || v === 'true';
+  };
+  if (el.hasAttribute('b')) out.b = flag('b');
+  if (el.hasAttribute('i')) out.i = flag('i');
+  if (el.hasAttribute('u')) out.u = el.getAttribute('u') !== 'none';
+  if (el.hasAttribute('strike')) out.strike = el.getAttribute('strike') !== 'noStrike';
+  if (el.hasAttribute('baseline')) out.baseline = intAttr(el, 'baseline', 0) / 100000;
+  if (el.hasAttribute('cap')) out.cap = el.getAttribute('cap');
+  const fill = child(el, 'solidFill');
+  if (fill) {
+    const color = resolveColorEl(fill.firstElementChild, pc.theme);
+    if (color) out.color = color;
+  }
+  const typeface = child(el, 'latin')?.getAttribute('typeface');
+  if (typeface) out.font = pc.theme.resolveFont(typeface);
+  return out;
+}
+
+/** <a:lvlNpPr> / <a:pPr> → partial paragraph properties. */
+function readPProps(el, pc) {
+  const p = {};
+  if (el.hasAttribute('algn')) p.algn = el.getAttribute('algn');
+  if (el.hasAttribute('marL')) p.marL = emu(el.getAttribute('marL'));
+  if (el.hasAttribute('indent')) p.indent = emu(el.getAttribute('indent'));
   for (const c of el.children) {
-    if (c.localName === localName) return c;
-  }
-  return null;
-}
-
-/** Searches the whole subtree for the first element with localName. */
-function findFirst(root, localName) {
-  if (!root) return null;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-  let node = walker.nextNode();
-  while (node) {
-    if (node.localName === localName) return node;
-    node = walker.nextNode();
-  }
-  return null;
-}
-
-function emu(attrValue) {
-  const n = parseInt(attrValue || '0', 10);
-  return isNaN(n) ? 0 : n / EMU_PER_PT;
-}
-
-function halfPt(attrValue) {
-  // Line widths in OOXML are in half-points
-  const n = parseInt(attrValue || '0', 10);
-  return isNaN(n) ? 0 : n / 2;
-}
-
-// ─── Color Resolution ─────────────────────────────────────────────────────────
-
-/**
- * Resolves an <a:*Clr> element to a CSS hex color string.
- * Handles: srgbClr, schemeClr (with luminance/tint mods), prstClr, sysClr.
- */
-function resolveColorEl(colorEl, themeCtx) {
-  if (!colorEl) return null;
-  const tag = colorEl.localName;
-
-  if (tag === 'srgbClr') {
-    return `#${colorEl.getAttribute('val') || '000000'}`;
-  }
-
-  if (tag === 'schemeClr') {
-    const slot = colorEl.getAttribute('val');
-    let hex = themeCtx.resolveColor(slot);
-    // Apply lumMod / lumOff / tint / shade modifiers
-    hex = applyColorMods(hex, colorEl);
-    return hex;
-  }
-
-  if (tag === 'sysClr') {
-    return `#${colorEl.getAttribute('lastClr') || '000000'}`;
-  }
-
-  if (tag === 'prstClr') {
-    // Named CSS colors — OOXML preset names are CSS color names
-    return colorEl.getAttribute('val') || '#000000';
-  }
-
-  return null;
-}
-
-/**
- * Applies lumMod, lumOff, tint, shade modifiers to a hex color.
- * All modifier values in OOXML are expressed in 1/100000ths (100000 = 100%).
- */
-function applyColorMods(hex, colorEl) {
-  let [r, g, b] = hexToRgb(hex);
-
-  const lumMod  = colorEl.querySelector('lumMod');
-  const lumOff  = colorEl.querySelector('lumOff');
-  const tint    = colorEl.querySelector('tint');
-  const shade   = colorEl.querySelector('shade');
-
-  if (lumMod || lumOff) {
-    let [h, s, l] = rgbToHsl(r, g, b);
-    if (lumMod) l = l * (parseInt(lumMod.getAttribute('val'), 10) / 100000);
-    if (lumOff) l = l + (parseInt(lumOff.getAttribute('val'), 10) / 100000);
-    l = Math.max(0, Math.min(1, l));
-    [r, g, b] = hslToRgb(h, s, l);
-  }
-
-  if (tint) {
-    const t = parseInt(tint.getAttribute('val'), 10) / 100000;
-    r = Math.round(r + (255 - r) * t);
-    g = Math.round(g + (255 - g) * t);
-    b = Math.round(b + (255 - b) * t);
-  }
-
-  if (shade) {
-    const s = parseInt(shade.getAttribute('val'), 10) / 100000;
-    r = Math.round(r * s);
-    g = Math.round(g * s);
-    b = Math.round(b * s);
-  }
-
-  return rgbToHex(r, g, b);
-}
-
-// ─── Color Math Utilities ─────────────────────────────────────────────────────
-function hexToRgb(hex) {
-  const h = hex.replace('#', '');
-  return [
-    parseInt(h.substring(0, 2), 16),
-    parseInt(h.substring(2, 4), 16),
-    parseInt(h.substring(4, 6), 16),
-  ];
-}
-
-function rgbToHex(r, g, b) {
-  const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
-  return `#${clamp(r).toString(16).padStart(2,'0')}${clamp(g).toString(16).padStart(2,'0')}${clamp(b).toString(16).padStart(2,'0')}`;
-}
-
-function rgbToHsl(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h, s, l = (max + min) / 2;
-  if (max === min) { h = s = 0; }
-  else {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      default: h = ((r - g) / d + 4) / 6;
+    switch (c.localName) {
+      case 'lnSpc': p.lnSpc = readSpacing(c); break;
+      case 'spcBef': p.spcBef = readSpacing(c); break;
+      case 'spcAft': p.spcAft = readSpacing(c); break;
+      case 'buNone': p.buKind = 'none'; break;
+      case 'buChar': p.buKind = 'char'; p.buChar = c.getAttribute('char') || '•'; break;
+      case 'buAutoNum':
+        p.buKind = 'auto';
+        p.buType = c.getAttribute('type') || 'arabicPeriod';
+        p.buStart = intAttr(c, 'startAt', 1);
+        break;
+      case 'buFont': p.buFont = c.getAttribute('typeface'); break;
+      case 'buClr': p.buColor = resolveColorEl(c.firstElementChild, pc.theme); break;
+      case 'buSzPct': p.buSize = intAttr(c, 'val', 100000) / 100000; break;
+      case 'defRPr': p.rPr = readRPr(c, pc); break;
+      default: break;
     }
   }
-  return [h, s, l];
+  return p;
 }
 
-function hslToRgb(h, s, l) {
-  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  const hue2rgb = (p, q, t) => {
-    if (t < 0) t += 1; if (t > 1) t -= 1;
-    if (t < 1/6) return p + (q - p) * 6 * t;
-    if (t < 1/2) return q;
-    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-    return p;
+function mergeProps(base, over) {
+  return { ...base, ...over, rPr: { ...base.rPr, ...over.rPr } };
+}
+
+/** Merged properties for one list level across all style sources (low → high). */
+function levelProps(sources, level, pc) {
+  let props = {};
+  for (const src of sources) {
+    const lvl = child(src, `lvl${level + 1}pPr`);
+    if (lvl) props = mergeProps(props, readPProps(lvl, pc));
+  }
+  return props;
+}
+
+// Wingdings/Symbol bullet glyphs have no equivalent in system fonts.
+const SYMBOL_BULLETS = { '§': '▪', 'Ø': '➢', 'ü': '✓', l: '●', n: '■', v: '❖', q: '❑', '': '•', '·': '•' };
+
+function bulletChar(char, font) {
+  if (font && /wingdings|symbol/i.test(font)) return SYMBOL_BULLETS[char] || '•';
+  return char || '•';
+}
+
+/** <a:bodyPr> chain (low → high) → text box properties in points. */
+function readBodyPr(elements, defaults) {
+  const out = {
+    l: defaults?.l ?? 7.2, t: defaults?.t ?? 3.6, r: defaults?.r ?? 7.2, b: defaults?.b ?? 3.6,
+    anchor: defaults?.anchor ?? 't', wrap: true, autofit: 'none', fontScale: 1, lnSpcReduction: 0,
   };
-  return [
-    Math.round(hue2rgb(p, q, h + 1/3) * 255),
-    Math.round(hue2rgb(p, q, h) * 255),
-    Math.round(hue2rgb(p, q, h - 1/3) * 255),
-  ];
+  for (const el of elements) {
+    if (el.hasAttribute('lIns')) out.l = emu(el.getAttribute('lIns'));
+    if (el.hasAttribute('tIns')) out.t = emu(el.getAttribute('tIns'));
+    if (el.hasAttribute('rIns')) out.r = emu(el.getAttribute('rIns'));
+    if (el.hasAttribute('bIns')) out.b = emu(el.getAttribute('bIns'));
+    if (el.hasAttribute('anchor')) out.anchor = el.getAttribute('anchor');
+    if (el.hasAttribute('wrap')) out.wrap = el.getAttribute('wrap') !== 'none';
+    for (const c of el.children) {
+      if (c.localName === 'normAutofit') {
+        out.autofit = 'norm';
+        out.fontScale = c.hasAttribute('fontScale') ? intAttr(c, 'fontScale', 100000) / 100000 : null;
+        out.lnSpcReduction = intAttr(c, 'lnSpcReduction', 0) / 100000;
+      } else if (c.localName === 'spAutoFit') out.autofit = 'shape';
+      else if (c.localName === 'noAutofit') out.autofit = 'none';
+    }
+  }
+  return out;
 }
-
-// ─── Fill Parsing ─────────────────────────────────────────────────────────────
 
 /**
- * Parses a fill element (<p:spPr> child) and returns a Fill descriptor.
- * @typedef {{ type: 'solid'|'gradient'|'none', color?: string, stops?: Array<{pos:number,color:string}> }} Fill
+ * Builds { bodyPr, paragraphs } from a <p:txBody>/<a:txBody>.
+ *
+ * @param bodyPrEls  <a:bodyPr> elements, low → high priority
+ * @param lstEls     list-style sources (txStyles entry, <a:lstStyle>s), low → high
+ * @param defaultColor  text colour used when nothing in the chain sets one
  */
-function parseFill(spPrEl, themeCtx) {
-  if (!spPrEl) return { type: 'none' };
-
-  const solidFill = child(spPrEl, 'solidFill');
-  if (solidFill) {
-    const colorEl = solidFill.children[0];
-    const color = resolveColorEl(colorEl, themeCtx);
-    return { type: 'solid', color: color || 'transparent' };
-  }
-
-  const gradFill = child(spPrEl, 'gradFill');
-  if (gradFill) {
-    const gsLst = child(gradFill, 'gsLst');
-    const stops = gsLst ? children(gsLst, 'gs').map(gs => {
-      const pos = parseInt(gs.getAttribute('pos') || '0', 10) / 100000;
-      const colorEl = gs.children[0];
-      return { pos, color: resolveColorEl(colorEl, themeCtx) || '#000000' };
-    }) : [];
-    const lin = child(gradFill, 'lin');
-    const angle = lin ? parseInt(lin.getAttribute('ang') || '0', 10) / 60000 : 0;
-    return { type: 'gradient', stops, angle };
-  }
-
-  const noFill = child(spPrEl, 'noFill');
-  if (noFill) return { type: 'none' };
-
-  return { type: 'none' };
-}
-
-// ─── Line/Border Parsing ──────────────────────────────────────────────────────
-
-function parseLine(spPrEl, themeCtx) {
-  if (!spPrEl) return null;
-  const lnEl = child(spPrEl, 'ln');
-  if (!lnEl) return null;
-
-  const noFill = child(lnEl, 'noFill');
-  if (noFill) return null;
-
-  const solidFill = child(lnEl, 'solidFill');
-  if (!solidFill) return null;
-
-  const colorEl = solidFill.children[0];
-  const color = resolveColorEl(colorEl, themeCtx) || '#000000';
-  // ln w attribute is in EMUs (English Metric Units for line width = 12700 per pt)
-  const wEmu = parseInt(lnEl.getAttribute('w') || '12700', 10);
-  const width = wEmu / 12700;
-
-  return { color, width };
-}
-
-// ─── Transform Parsing ────────────────────────────────────────────────────────
-
-function parseXfrm(xfrmEl) {
-  if (!xfrmEl) return { x: 0, y: 0, w: 0, h: 0, rot: 0, flipH: false, flipV: false };
-  const offEl = child(xfrmEl, 'off');
-  const extEl = child(xfrmEl, 'ext');
-  return {
-    x:     offEl ? emu(offEl.getAttribute('x')) : 0,
-    y:     offEl ? emu(offEl.getAttribute('y')) : 0,
-    w:     extEl ? emu(extEl.getAttribute('cx')) : 0,
-    h:     extEl ? emu(extEl.getAttribute('cy')) : 0,
-    rot:   parseInt(xfrmEl.getAttribute('rot') || '0', 10) / 60000, // degrees
-    flipH: xfrmEl.getAttribute('flipH') === '1',
-    flipV: xfrmEl.getAttribute('flipV') === '1',
-  };
-}
-
-// ─── Text Parsing ─────────────────────────────────────────────────────────────
-
-/**
- * Parses a <p:txBody> into an array of paragraphs, each with styled runs.
- * @typedef {{ text: string, bold: boolean, italic: boolean, underline: boolean,
- *             fontSize: number, color: string, fontFamily: string, strike: boolean }} Run
- * @typedef {{ runs: Run[], align: string, indent: number, bullet: boolean }} Paragraph
- */
-function parseTextBody(txBodyEl, themeCtx) {
-  if (!txBodyEl) return [];
+function buildText(txBodyEl, pc, { bodyPrEls = [], lstEls = [], defaultColor, insets }) {
+  const bodyPr = readBodyPr(bodyPrEls, insets);
+  const baseColor = defaultColor || pc.theme.resolveColor('tx1');
   const paragraphs = [];
 
   for (const pEl of children(txBodyEl, 'p')) {
-    const pPrEl = child(pEl, 'pPr');
-    const align = pPrEl?.getAttribute('algn') || 'l';
-    const indent = parseInt(pPrEl?.getAttribute('indent') || '0', 10) / EMU_PER_PT;
-    const bullet  = !!child(pPrEl, 'buChar') || !!child(pPrEl, 'buAutoNum');
+    const pPr = child(pEl, 'pPr');
+    const level = Math.max(0, Math.min(8, intAttr(pPr, 'lvl', 0)));
+    let props = levelProps(lstEls, level, pc);
+    if (pPr) props = mergeProps(props, readPProps(pPr, pc));
+
+    const base = {
+      sz: DEFAULT_FONT_PT, b: false, i: false, u: false, strike: false, baseline: 0,
+      color: baseColor, font: pc.theme.minorFont, ...props.rPr,
+    };
 
     const runs = [];
-    for (const rEl of children(pEl, 'r')) {
-      const rPrEl = child(rEl, 'rPr');
-      const tEl   = child(rEl, 't');
-      const text  = tEl?.textContent ?? '';
+    const pushRun = (text, rPrEl) => {
+      const r = { ...base, ...readRPr(rPrEl, pc) };
+      runs.push({
+        text: r.cap === 'all' ? text.toUpperCase() : text,
+        bold: r.b, italic: r.i, underline: r.u, strike: r.strike,
+        size: r.sz, color: r.color, font: r.font, baseline: r.baseline,
+      });
+    };
 
-      const bold      = rPrEl?.getAttribute('b') === '1';
-      const italic    = rPrEl?.getAttribute('i') === '1';
-      const underline = rPrEl?.getAttribute('u') && rPrEl.getAttribute('u') !== 'none';
-      const strike    = rPrEl?.getAttribute('strike') && rPrEl.getAttribute('strike') !== 'noStrike';
-      const szHundPt  = parseInt(rPrEl?.getAttribute('sz') || '0', 10);
-      const fontSize  = szHundPt > 0 ? szHundPt / 100 : 18; // 100 hundredths = 1pt
-
-      // Color: check rPr solidFill → schemeClr chain
-      let color = '#000000';
-      if (rPrEl) {
-        const solidFill = child(rPrEl, 'solidFill');
-        if (solidFill) {
-          const colorEl = solidFill.children[0];
-          color = resolveColorEl(colorEl, themeCtx) || '#000000';
-        }
+    for (const c of pEl.children) {
+      if (c.localName === 'r') {
+        pushRun(child(c, 't')?.textContent ?? '', child(c, 'rPr'));
+      } else if (c.localName === 'fld') {
+        const isSlideNum = (c.getAttribute('type') || '').startsWith('slidenum');
+        pushRun(isSlideNum ? String(pc.slideNumber) : child(c, 't')?.textContent ?? '', child(c, 'rPr'));
+      } else if (c.localName === 'br') {
+        pushRun('\n', child(c, 'rPr'));
       }
-
-      // Font
-      let fontFamily = themeCtx.minorFont;
-      if (rPrEl) {
-        const latinEl = child(rPrEl, 'latin');
-        if (latinEl) fontFamily = themeCtx.resolveFont(latinEl.getAttribute('typeface'));
-      }
-
-      runs.push({ text, bold, italic, underline, strike, fontSize, color, fontFamily });
     }
 
-    // Handle <a:br> (line breaks) as synthetic runs
-    for (const brEl of children(pEl, 'br')) {
-      runs.push({ text: '\n', bold: false, italic: false, underline: false,
-                  strike: false, fontSize: 18, color: '#000000', fontFamily: themeCtx.minorFont });
+    let bullet = null;
+    if (props.buKind === 'char') {
+      bullet = { kind: 'char', char: bulletChar(props.buChar, props.buFont), color: props.buColor, size: props.buSize };
+    } else if (props.buKind === 'auto') {
+      bullet = { kind: 'auto', type: props.buType, start: props.buStart, color: props.buColor, size: props.buSize };
     }
 
-    paragraphs.push({ runs, align, indent, bullet });
+    const endSz = readRPr(child(pEl, 'endParaRPr'), pc).sz;
+    paragraphs.push({
+      align: props.algn || 'l',
+      marL: props.marL || 0,
+      indent: props.indent || 0,
+      lnSpc: props.lnSpc,
+      spcBef: props.spcBef,
+      spcAft: props.spcAft,
+      bullet,
+      level,
+      runs,
+      endSize: endSz ?? base.sz,
+    });
   }
-
-  return paragraphs;
+  return { bodyPr, paragraphs };
 }
 
-// ─── Shape Geometry ──────────────────────────────────────────────────────────
+// ─── Shapes ───────────────────────────────────────────────────────────────────
 
 function parseGeometry(spPrEl) {
-  if (!spPrEl) return 'rect';
-  const prstGeom = child(spPrEl, 'prstGeom');
-  if (!prstGeom) return 'rect';
-  return prstGeom.getAttribute('prst') || 'rect';
+  const prst = child(spPrEl, 'prstGeom');
+  if (!prst) return { geometry: 'rect', adj: undefined };
+  // First adjust value, as a fraction of 100000 (used by roundRect radius).
+  const gd = findFirst(child(prst, 'avLst'), 'gd');
+  const m = gd?.getAttribute('fmla')?.match(/val\s+(-?\d+)/);
+  return { geometry: prst.getAttribute('prst') || 'rect', adj: m ? parseInt(m[1], 10) / 100000 : undefined };
 }
 
-// ─── Image Reference ─────────────────────────────────────────────────────────
+/** <p:sp> and <p:cxnSp>. */
+function parseSp(el, pc) {
+  const ph = pc.placeholders ? getPh(el) : null;
+  const chain = [...placeholderParents(ph, pc), el]; // low → high priority
+  const high = [...chain].reverse();
+  const spPrs = chain.map((e) => child(e, 'spPr'));
 
-/**
- * Resolves a blip r:embed reference to a media Blob from the media map.
- * @param {string} rId - relationship ID (r:embed attribute)
- * @param {Document} slideDoc
- * @param {Map<string,Blob>} media
- * @returns {Blob|null}
- */
-function resolveImage(rId, slideDoc, media) {
-  if (!rId || !slideDoc) return null;
+  const xf = high.map((e) => parseXfrm(path(e, 'spPr', 'xfrm'))).find(Boolean);
+  if (!xf) return null; // nothing gives this shape a position
 
-  // Find the slide's _rels to look up the media path
-  // The _rels data was pre-built into the slideDoc's baseURI context;
-  // we embed a <Relationships> in the document or use the media map directly.
-  // Since we pass the full media Map with zip paths as keys, we need
-  // to find the relationship target. We embed rels inline via the slideDoc.
-  const relsNs = 'http://schemas.openxmlformats.org/package/2006/relationships';
-  // The rels doc should be available via the slideDoc processing instructions
-  // or injected. For now, search all media keys by rId pattern.
-  // (Actual rels resolution is done in viewer.js which passes pre-resolved blob)
-  for (const [path, blob] of media) {
-    if (path.includes(rId)) return blob;
+  const style = readStyle(el, pc);
+
+  let fill = null;
+  for (const spPr of [...spPrs].reverse()) {
+    const f = fillChild(spPr);
+    if (f) { fill = parseFillEl(f, pc); break; }
   }
-  return null;
-}
+  fill = fill || style?.fill || NONE;
 
-// ─── Shape Parsers ────────────────────────────────────────────────────────────
+  let linePartial = { ...(style?.line || {}) };
+  for (const spPr of spPrs) linePartial = { ...linePartial, ...parseLn(child(spPr, 'ln'), pc) };
 
-/** Parses a <p:sp> shape (text box or auto-shape). */
-function parseSp(spEl, themeCtx, media, slideDoc) {
-  const spPrEl  = child(spEl, 'spPr');
-  const txBodyEl = child(spEl, 'txBody');
-  const nvSpPrEl = child(spEl, 'nvSpPr');
+  const geomSource = high.map((e) => child(e, 'spPr')).find((s) => child(s, 'prstGeom'));
+  const { geometry, adj } = parseGeometry(geomSource);
 
-  const xfrmEl = child(spPrEl, 'xfrm');
-  const { x, y, w, h, rot, flipH, flipV } = parseXfrm(xfrmEl);
-
-  const fill = parseFill(spPrEl, themeCtx);
-  const line = parseLine(spPrEl, themeCtx);
-  const geometry = parseGeometry(spPrEl);
-  const paragraphs = txBodyEl ? parseTextBody(txBodyEl, themeCtx) : [];
-
-  // Determine if this is purely a text box with no visible fill
-  const isTextBox = nvSpPrEl &&
-    child(child(nvSpPrEl, 'nvPr'), 'ph') === null &&
-    paragraphs.length > 0 &&
-    fill.type === 'none';
+  let text = null;
+  const txBody = child(el, 'txBody');
+  if (txBody) {
+    const kindEl = ph ? child(pc.placeholders.txStyles, txStyleKind(ph)) : null;
+    text = buildText(txBody, pc, {
+      bodyPrEls: chain.map((e) => path(e, 'txBody', 'bodyPr')).filter(Boolean),
+      lstEls: [kindEl, ...chain.map((e) => path(e, 'txBody', 'lstStyle'))].filter(Boolean),
+      defaultColor: style?.fontColor,
+    });
+  }
 
   return {
-    type: paragraphs.length > 0 ? 'text' : 'shape',
-    geometry,
-    x, y, w, h, rot, flipH, flipV,
-    fill,
-    line,
-    paragraphs,
+    type: 'shape',
+    x: xf.x, y: xf.y, w: xf.w, h: xf.h, rot: xf.rot, flipH: xf.flipH, flipV: xf.flipV,
+    geometry, adj, fill, line: finishLine(linePartial), text,
   };
 }
 
-/** Parses a <p:pic> picture shape. */
-function parsePic(picEl, themeCtx, media, slideRelsDoc) {
-  const spPrEl  = child(picEl, 'spPr');
-  const blipFillEl = child(picEl, 'blipFill');
-  const nvPicPrEl  = child(picEl, 'nvPicPr');
+/** <p:pic>. */
+function parsePic(el, pc) {
+  const ph = pc.placeholders ? getPh(el) : null;
+  const chain = [...placeholderParents(ph, pc), el];
+  const xf = [...chain].reverse().map((e) => parseXfrm(path(e, 'spPr', 'xfrm'))).find(Boolean);
+  if (!xf) return null;
 
-  const xfrmEl = child(spPrEl, 'xfrm');
-  const { x, y, w, h, rot, flipH, flipV } = parseXfrm(xfrmEl);
-
-  // Get the relationship ID for the image
-  const blipEl = blipFillEl ? child(blipFillEl, 'blip') : null;
-  const rEmbed = blipEl?.getAttributeNS(
-    'http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed'
-  ) || blipEl?.getAttribute('r:embed') || null;
+  const blipFill = child(el, 'blipFill');
+  const loadBlob = blipLoader(child(blipFill, 'blip'), pc);
+  const { geometry, adj } = parseGeometry(child(el, 'spPr'));
 
   return {
     type: 'image',
-    x, y, w, h, rot, flipH, flipV,
-    rEmbed,    // resolved to blob by viewer.js
-    blob: null, // filled in later
+    x: xf.x, y: xf.y, w: xf.w, h: xf.h, rot: xf.rot, flipH: xf.flipH, flipV: xf.flipV,
+    loadBlob, crop: parseSrcRect(blipFill), geometry, adj,
+    line: finishLine(parseLn(path(el, 'spPr', 'ln'), pc)),
   };
 }
 
-/** Parses a <p:graphicFrame> — usually contains a table or chart. */
-function parseGraphicFrame(frameEl, themeCtx) {
-  const xfrmEl = child(frameEl, 'xfrm');
-  const { x, y, w, h, rot } = parseXfrm(xfrmEl);
+/** <p:graphicFrame>: tables are parsed; charts, SmartArt and OLE become badges. */
+function parseGraphicFrame(el, pc) {
+  const ph = pc.placeholders ? getPh(el) : null;
+  const chain = [...placeholderParents(ph, pc), el];
+  const xf = [...chain].reverse().map((e) => parseXfrm(child(e, 'xfrm'))).find(Boolean);
+  if (!xf) return null;
+  const box = { x: xf.x, y: xf.y, w: xf.w, h: xf.h, rot: xf.rot };
 
-  const graphicEl = child(frameEl, 'graphic');
-  const graphicDataEl = graphicEl ? child(graphicEl, 'graphicData') : null;
-  const uri = graphicDataEl?.getAttribute('uri') || '';
+  const graphicData = path(el, 'graphic', 'graphicData');
+  const uri = graphicData?.getAttribute('uri') || '';
+  if (uri.includes('table')) return parseTable(graphicData, pc, box);
 
-  // Table
-  if (uri.includes('table')) {
-    return parseTable(frameEl, graphicDataEl, themeCtx, { x, y, w, h, rot });
-  }
-
-  // Chart, SmartArt, or other embedded content → unsupported badge
-  const label = uri.includes('chart')   ? 'Chart'
-    : uri.includes('diagram') ? 'SmartArt'
-    : 'Embedded Object';
-
-  return { type: 'unsupported', label, x, y, w, h, rot };
+  const label = uri.includes('chart') ? 'Chart' : uri.includes('diagram') ? 'SmartArt' : 'Embedded object';
+  return { type: 'unsupported', label, ...box };
 }
 
-/** Parses an OOXML table (<a:tbl>) inside a graphicFrame. */
-function parseTable(frameEl, graphicDataEl, themeCtx, pos) {
-  const tblEl = findFirst(graphicDataEl, 'tbl');
-  if (!tblEl) return { type: 'unsupported', label: 'Table (parse error)', ...pos };
+function parseTable(graphicData, pc, box) {
+  const tbl = findFirst(graphicData, 'tbl');
+  if (!tbl) return { type: 'unsupported', label: 'Table', ...box };
 
-  const rows = [];
-  for (const trEl of children(tblEl, 'tr')) {
-    const h = emu(trEl.getAttribute('h'));
-    const cells = [];
-    for (const tcEl of children(trEl, 'tc')) {
-      const txBodyEl = child(tcEl, 'txBody');
-      const tcPrEl   = child(tcEl, 'tcPr');
-      const paragraphs = txBodyEl ? parseTextBody(txBodyEl, themeCtx) : [];
-      const fill = parseFill(tcPrEl, themeCtx);
-      const gridSpan = parseInt(tcEl.getAttribute('gridSpan') || '1', 10);
-      const rowSpan  = parseInt(tcEl.getAttribute('rowSpan')  || '1', 10);
-      cells.push({ paragraphs, fill, gridSpan, rowSpan });
-    }
-    rows.push({ h, cells });
-  }
+  const colWidths = children(child(tbl, 'tblGrid'), 'gridCol').map((gc) => emu(gc.getAttribute('w')));
+  const rows = children(tbl, 'tr').map((tr) => ({
+    h: emu(tr.getAttribute('h')),
+    cells: children(tr, 'tc').map((tc) => {
+      const tcPr = child(tc, 'tcPr');
+      const txBody = child(tc, 'txBody');
+      const insets = {
+        l: tcPr?.hasAttribute('marL') ? emu(tcPr.getAttribute('marL')) : 7.2,
+        r: tcPr?.hasAttribute('marR') ? emu(tcPr.getAttribute('marR')) : 7.2,
+        t: tcPr?.hasAttribute('marT') ? emu(tcPr.getAttribute('marT')) : 3.6,
+        b: tcPr?.hasAttribute('marB') ? emu(tcPr.getAttribute('marB')) : 3.6,
+        anchor: tcPr?.getAttribute('anchor') || 't',
+      };
+      const borders = {};
+      for (const [tag, key] of [['lnL', 'l'], ['lnR', 'r'], ['lnT', 't'], ['lnB', 'b']]) {
+        const ln = child(tcPr, tag);
+        if (ln) borders[key] = finishLine(parseLn(ln, pc));
+      }
+      return {
+        text: txBody ? buildText(txBody, pc, { insets }) : null,
+        fill: parseFillEl(fillChild(tcPr), pc),
+        borders: Object.keys(borders).length ? borders : null,
+        gridSpan: intAttr(tc, 'gridSpan', 1),
+        rowSpan: intAttr(tc, 'rowSpan', 1),
+        hMerge: tc.getAttribute('hMerge') === '1',
+        vMerge: tc.getAttribute('vMerge') === '1',
+      };
+    }),
+  }));
 
-  // Column widths
-  const tblGridEl = child(tblEl, 'tblGrid');
-  const colWidths = tblGridEl
-    ? children(tblGridEl, 'gridCol').map(gc => emu(gc.getAttribute('w')))
-    : [];
-
-  return {
-    type: 'table',
-    ...pos,
-    rows,
-    colWidths,
-  };
+  return { type: 'table', ...box, rows, colWidths };
 }
-
-/** Parses a <p:grpSp> group shape — recursively extracts children. */
-function parseGrpSp(grpSpEl, themeCtx, media, slideDoc) {
-  const shapes = [];
-  for (const child_ of grpSpEl.children) {
-    const shape = parseShape(child_, themeCtx, media, slideDoc);
-    if (shape) shapes.push(shape);
-  }
-  return { type: 'group', shapes };
-}
-
-/** Dispatches to the correct shape parser based on element localName. */
-function parseShape(el, themeCtx, media, slideDoc) {
-  switch (el.localName) {
-    case 'sp':           return parseSp(el, themeCtx, media, slideDoc);
-    case 'pic':          return parsePic(el, themeCtx, media, slideDoc);
-    case 'graphicFrame': return parseGraphicFrame(el, themeCtx);
-    case 'grpSp':        return parseGrpSp(el, themeCtx, media, slideDoc);
-    case 'cxnSp':        return parseSp(el, themeCtx, media, slideDoc); // connector
-    default:             return null;
-  }
-}
-
-// ─── Slide Dimensions ─────────────────────────────────────────────────────────
 
 /**
- * Reads slide dimensions from ppt/presentation.xml-style sldSz.
- * Since we don't have direct access to presentation.xml here, we use
- * a convention: the widescreen 16:9 default (10" × 5.625").
- * Viewers can override by passing explicit dimensions.
+ * <p:grpSp>. Children live in the group's child coordinate space
+ * (chOff/chExt); they are mapped into the parent's space here so the renderer
+ * only needs to apply the group's own rotation/flip.
  */
-function parseSlideSize(presentationXml) {
-  if (!presentationXml) return {
-    width:  DEFAULT_SLIDE_WIDTH_EMU  / EMU_PER_PT,
-    height: DEFAULT_SLIDE_HEIGHT_EMU / EMU_PER_PT,
+function parseGrpSp(el, pc) {
+  const xf = parseXfrm(path(el, 'grpSpPr', 'xfrm'));
+  const kids = [];
+  for (const c of el.children) {
+    if (c.localName === 'grpSpPr' || c.localName.startsWith('nv')) continue;
+    kids.push(...parseShapeList(c, pc));
+  }
+  if (!xf) return { type: 'group', x: 0, y: 0, w: 0, h: 0, rot: 0, flipH: false, flipV: false, shapes: kids };
+
+  const sx = xf.chW ? xf.w / xf.chW : 1;
+  const sy = xf.chH ? xf.h / xf.chH : 1;
+  const mapInto = (shapes) => {
+    for (const s of shapes) {
+      s.x = xf.x + (s.x - xf.chX) * sx;
+      s.y = xf.y + (s.y - xf.chY) * sy;
+      s.w *= sx;
+      s.h *= sy;
+      if (s.type === 'group') mapInto(s.shapes);
+    }
   };
-  const doc = parseXml(presentationXml);
-  const sldSz = findFirst(doc, 'sldSz');
-  if (!sldSz) return {
-    width:  DEFAULT_SLIDE_WIDTH_EMU  / EMU_PER_PT,
-    height: DEFAULT_SLIDE_HEIGHT_EMU / EMU_PER_PT,
-  };
+  mapInto(kids);
+
   return {
-    width:  emu(sldSz.getAttribute('cx')),
-    height: emu(sldSz.getAttribute('cy')),
+    type: 'group',
+    x: xf.x, y: xf.y, w: xf.w, h: xf.h, rot: xf.rot, flipH: xf.flipH, flipV: xf.flipV,
+    shapes: kids,
   };
+}
+
+/** Parses one spTree child into zero or more shapes. */
+function parseShapeList(el, pc) {
+  if (isHidden(el)) return [];
+  let shape = null;
+  switch (el.localName) {
+    case 'sp':
+    case 'cxnSp': shape = parseSp(el, pc); break;
+    case 'pic': shape = parsePic(el, pc); break;
+    case 'graphicFrame': shape = parseGraphicFrame(el, pc); break;
+    case 'grpSp': shape = parseGrpSp(el, pc); break;
+    case 'AlternateContent': {
+      // Prefer the modern <mc:Choice>; fall back to <mc:Fallback>.
+      const branch = child(el, 'Choice') || child(el, 'Fallback');
+      return branch ? Array.from(branch.children).flatMap((c) => parseShapeList(c, pc)) : [];
+    }
+    default: break;
+  }
+  return shape ? [shape] : [];
+}
+
+/** Non-placeholder shapes of a layout/master, drawn behind the slide's own. */
+function parseDecor(doc, pc) {
+  const spTree = findFirst(doc, 'spTree');
+  if (!spTree) return [];
+  const shapes = [];
+  for (const el of spTree.children) {
+    if (getPh(el)) continue;
+    shapes.push(...parseShapeList(el, pc));
+  }
+  return shapes;
+}
+
+// ─── Background ───────────────────────────────────────────────────────────────
+
+/** The <p:bg> of a document as a Fill, or null if it defines none. */
+function parseBackground(doc, pc) {
+  const bg = path(doc && findFirst(doc, 'cSld'), 'bg');
+  if (!bg) return null;
+
+  const bgPr = child(bg, 'bgPr');
+  if (bgPr) {
+    const f = fillChild(bgPr);
+    return f ? parseFillEl(f, pc) : null;
+  }
+
+  const bgRef = child(bg, 'bgRef');
+  if (bgRef) {
+    const idx = intAttr(bgRef, 'idx', 0);
+    const color = resolveColorEl(bgRef.firstElementChild, pc.theme);
+    const styleEl = idx >= 1001 ? pc.theme.fmt.bgFills[idx - 1001] : pc.theme.fmt.fills[idx - 1];
+    return styleEl ? parseFillEl(styleEl, pc, color) : color ? { type: 'solid', color } : null;
+  }
+  return null;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Parses a single slide XML into a SlideModel.
- *
- * @param {string} slideXml
- * @param {ThemeContext} themeCtx  - from parse-theme.js
- * @param {Map<string, Blob>} media - from unzip.js
- * @param {{ width: number, height: number }} slideSize - in points
- * @param {Map<string, string>} slideImageRels - rId → zip media path
- * @returns {SlideModel}
- *
- * @typedef {Object} SlideModel
- * @property {number} width   - in points
- * @property {number} height  - in points
- * @property {string} background - CSS color
- * @property {Shape[]} shapes
+ * Reads slide dimensions (points) from presentation.xml's <p:sldSz>.
  */
-export function parseSlide(slideXml, themeCtx, media, slideSize, slideImageRels = new Map()) {
-  const slideDoc = parseXml(slideXml);
-  if (!slideDoc) return { width: 720, height: 540, background: '#ffffff', shapes: [] };
-
-  const spTree = findFirst(slideDoc, 'spTree');
-  const shapes = [];
-
-  if (spTree) {
-    for (const el of spTree.children) {
-      const shape = parseShape(el, themeCtx, media, slideDoc);
-      if (!shape) continue;
-
-      // Resolve image blobs for pic shapes
-      if (shape.type === 'image' && shape.rEmbed) {
-        const zipPath = slideImageRels.get(shape.rEmbed);
-        shape.blob = zipPath ? (media.get(zipPath) || null) : null;
-      }
-
-      shapes.push(shape);
-    }
-  }
-
-  return {
-    width:      slideSize?.width  ?? DEFAULT_SLIDE_WIDTH_EMU  / EMU_PER_PT,
-    height:     slideSize?.height ?? DEFAULT_SLIDE_HEIGHT_EMU / EMU_PER_PT,
-    background: themeCtx.background,
-    shapes,
-  };
+export function parseSlideSize(presentationXml) {
+  const sldSz = findFirst(parseXml(presentationXml), 'sldSz');
+  if (!sldSz) return { width: DEFAULT_WIDTH_PT, height: DEFAULT_HEIGHT_PT };
+  return { width: emu(sldSz.getAttribute('cx')), height: emu(sldSz.getAttribute('cy')) };
 }
 
 /**
- * Parses slide dimensions from presentation.xml content.
- * Re-exported so viewer.js can call it once.
+ * Parses a slide into a SlideModel.
+ *
+ * @param {string} slideXml
+ * @param {ThemeContext} themeCtx           from parse-theme.js
+ * @param {Map<string, () => Promise<Blob>>} media   lazy loaders from unzip.js
+ * @param {{width:number, height:number}} slideSize  points
+ * @param {Map<string,string>} slideImageRels        slide rId → media path
+ * @param {Object} [inherit]
+ * @param {string|null} [inherit.layoutXml]
+ * @param {string|null} [inherit.masterXml]
+ * @param {Map<string,string>} [inherit.layoutImageRels]
+ * @param {Map<string,string>} [inherit.masterImageRels]
+ * @param {number} [inherit.slideNumber]    1-based, for slide-number fields
  */
-export { parseSlideSize };
+export function parseSlide(slideXml, themeCtx, media, slideSize, slideImageRels = new Map(), inherit = {}) {
+  const width = slideSize?.width ?? DEFAULT_WIDTH_PT;
+  const height = slideSize?.height ?? DEFAULT_HEIGHT_PT;
+  const slideDoc = parseXml(slideXml);
+  const layoutDoc = parseXml(inherit.layoutXml);
+  const masterDoc = parseXml(inherit.masterXml);
+
+  const fallbackBg = { type: 'solid', color: themeCtx.resolveColor('bg1') };
+  if (!slideDoc || slideDoc.documentElement.localName === 'parsererror') {
+    return { width, height, background: fallbackBg, shapes: [] };
+  }
+
+  const slideNumber = inherit.slideNumber ?? 1;
+  const layoutPc = {
+    theme: themeCtx, media, rels: inherit.layoutImageRels || new Map(), slideNumber, placeholders: null,
+  };
+  const masterPc = { ...layoutPc, rels: inherit.masterImageRels || new Map() };
+  const slidePc = {
+    theme: themeCtx, media, rels: slideImageRels, slideNumber,
+    placeholders: {
+      layoutList: indexPlaceholders(layoutDoc),
+      masterList: indexPlaceholders(masterDoc),
+      txStyles: findFirst(masterDoc, 'txStyles'),
+    },
+  };
+
+  const background =
+    parseBackground(slideDoc, slidePc) ||
+    parseBackground(layoutDoc, layoutPc) ||
+    parseBackground(masterDoc, masterPc) ||
+    fallbackBg;
+
+  // Back to front: master graphics, layout graphics, then the slide itself.
+  const shapes = [];
+  const root = (doc) => doc?.documentElement;
+  const slideShowsMaster = root(slideDoc).getAttribute('showMasterSp') !== '0';
+  const layoutShowsMaster = root(layoutDoc)?.getAttribute('showMasterSp') !== '0';
+  if (slideShowsMaster) {
+    if (layoutShowsMaster && masterDoc) shapes.push(...parseDecor(masterDoc, masterPc));
+    if (layoutDoc) shapes.push(...parseDecor(layoutDoc, layoutPc));
+  }
+
+  const spTree = findFirst(slideDoc, 'spTree');
+  for (const el of spTree?.children || []) shapes.push(...parseShapeList(el, slidePc));
+
+  return { width, height, background, shapes };
+}

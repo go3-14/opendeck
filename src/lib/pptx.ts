@@ -3,6 +3,7 @@ import { unzipPptx } from '@/renderer/unzip.js'
 import { parseThemeChain } from '@/renderer/parse-theme.js'
 import { parseSlide, parseSlideSize } from '@/renderer/parse-slide.js'
 import { renderSlide } from '@/renderer/render-canvas.js'
+import { clearXmlCache } from '@/renderer/xml.js'
 
 export type Slide = ReturnType<typeof parseSlide>
 
@@ -11,9 +12,10 @@ export async function loadPptx(
   bytes: ArrayBuffer,
   onProgress?: (message: string) => void,
 ): Promise<Slide[]> {
+  clearXmlCache()
   onProgress?.('Reading file…')
   const {
-    slideXmls, layoutXmls, masterXmls, themeXml, media,
+    slideXmls, layoutXmls, masterXmls, themeXml, themeXmls, media,
     slideRels, imageRels, presentationXml, slidePaths, layoutPaths, masterPaths,
   } = await unzipPptx(bytes)
 
@@ -24,15 +26,22 @@ export async function loadPptx(
 
   for (let i = 0; i < slideXmls.length; i++) {
     onProgress?.(`Parsing slide ${i + 1} of ${slideXmls.length}…`)
-    const rels = slideRels.get(slidePaths[i]) ?? { layoutPath: '', masterPath: '' }
-    const layoutIdx = layoutPaths.indexOf(rels.layoutPath)
-    const masterIdx = masterPaths.indexOf(rels.masterPath)
+    const rels = slideRels.get(slidePaths[i]) ?? { layoutPath: null, masterPath: null }
+    const layoutIdx = layoutPaths.indexOf(rels.layoutPath ?? '')
+    const masterIdx = masterPaths.indexOf(rels.masterPath ?? '')
     const layoutXml = layoutXmls[layoutIdx >= 0 ? layoutIdx : 0] || null
     const masterXml = masterXmls[masterIdx >= 0 ? masterIdx : 0] || null
+    const slideTheme = (rels.masterPath && themeXmls.get(rels.masterPath)) || themeXml
 
-    const themeCtx = parseThemeChain(slideXmls[i], layoutXml, masterXml, themeXml)
+    const themeCtx = parseThemeChain(slideXmls[i], layoutXml, masterXml, slideTheme)
     slides.push(
-      parseSlide(slideXmls[i], themeCtx, media, slideSize, imageRels.get(slidePaths[i]) || new Map()),
+      parseSlide(slideXmls[i], themeCtx, media, slideSize, imageRels.get(slidePaths[i]) || new Map(), {
+        layoutXml,
+        masterXml,
+        layoutImageRels: imageRels.get(layoutPaths[layoutIdx >= 0 ? layoutIdx : 0]) || new Map(),
+        masterImageRels: imageRels.get(masterPaths[masterIdx >= 0 ? masterIdx : 0]) || new Map(),
+        slideNumber: i + 1,
+      }),
     )
   }
   return slides
