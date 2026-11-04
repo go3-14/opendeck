@@ -444,7 +444,7 @@ export default function App() {
             <DropdownMenuTrigger render={<Button variant="outline" size="sm" aria-label="More actions" />}>
               More
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="min-w-60">
               <DropdownMenuItem onClick={() => fileInput.current?.click()}>Open another file…</DropdownMenuItem>
               {recent.length > 0 && (
                 <>
