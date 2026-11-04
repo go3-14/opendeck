@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Presenter from '@/components/Presenter'
+import { SlideCanvas, Thumbnail } from '@/components/SlideCanvas'
+import { Tip } from '@/components/Tip'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { consumeHandoff } from '@/lib/idb'
 import { prefetchAround } from '@/lib/prefetch'
 import { exportSlidesAsZip, loadPptx, type Slide } from '@/lib/pptx'
-import { useSlideRender } from '@/lib/useSlideRender'
 import { cn } from '@/lib/utils'
 
 const MIN_ZOOM = 0.25
@@ -16,64 +18,6 @@ const ZOOM_STEP = 0.25
 
 type Status = 'empty' | 'loading' | 'ready'
 
-function SlideCanvas({ slide, zoom }: { slide: Slide; zoom: number }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  useSlideRender(ref, slide, zoom, undefined, { cache: true })
-  return (
-    <canvas
-      ref={ref}
-      className="block border bg-white"
-      style={{ width: slide.width * zoom, height: slide.height * zoom }}
-      aria-label="Current slide"
-    />
-  )
-}
-
-function Thumbnail({
-  slide, index, active, onSelect,
-}: { slide: Slide; index: number; active: boolean; onSelect: () => void }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  // Render only once the thumbnail is near the viewport, through a shared queue.
-  const [visible, setVisible] = useState(false)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || visible) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: '300px' },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [visible])
-  useSlideRender(ref, slide, 144 / slide.width, 1, { enabled: visible, limited: true })
-
-  useEffect(() => {
-    if (active) ref.current?.scrollIntoView({ block: 'nearest' })
-  }, [active])
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-label={`Slide ${index + 1}`}
-      aria-current={active}
-      className="flex w-full items-start gap-2 rounded-md p-1 text-left hover:bg-accent"
-    >
-      <span className="w-4 pt-1 text-right text-xs text-muted-foreground">{index + 1}</span>
-      <canvas
-        ref={ref}
-        className={cn('block border bg-white', active && 'outline-2 outline-offset-1 outline-primary')}
-        style={{ width: 144, height: (144 * slide.height) / slide.width }}
-      />
-    </button>
-  )
-}
-
 export default function App() {
   const [status, setStatus] = useState<Status>('empty')
   const [message, setMessage] = useState('')
@@ -81,7 +25,11 @@ export default function App() {
   const [filename, setFilename] = useState('')
   const [slides, setSlides] = useState<Slide[]>([])
   const [index, setIndex] = useState(0)
-  const [zoom, setZoom] = useState(1)
+  // null = fit the slide to the window
+  const [zoom, setZoom] = useState<number | null>(null)
+  const [showThumbs, setShowThumbs] = useState(true)
+  const mainRef = useRef<HTMLElement>(null)
+  const [area, setArea] = useState({ w: 0, h: 0 })
   const [exporting, setExporting] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [presenting, setPresenting] = useState(false)
@@ -146,13 +94,31 @@ export default function App() {
       })
   }, [openBytes])
 
+  // Track the slide area so "fit" always matches the window.
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return
+    const update = () => setArea({ w: el.clientWidth, h: el.clientHeight })
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [status, showThumbs])
+
   const go = useCallback(
     (i: number) => setIndex(Math.max(0, Math.min(slides.length - 1, i))),
     [slides.length],
   )
+  const current = slides[index]
+  const PAD = 48 // matches the p-6 padding around the slide
+  const fitZoom = current && area.w > 0
+    ? Math.max(0.1, Math.min((area.w - PAD) / current.width, (area.h - PAD) / current.height))
+    : 1
+  const effectiveZoom = zoom ?? fitZoom
   const changeZoom = useCallback(
-    (delta: number) => setZoom((z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round((z + delta) * 100) / 100))),
-    [],
+    (delta: number) =>
+      setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round((effectiveZoom + delta) * 100) / 100))),
+    [effectiveZoom],
   )
 
   // Keep the neighbouring slides' images decoded so paging is instant.
@@ -172,6 +138,8 @@ export default function App() {
       else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1) }
       else if (e.key === '+' || e.key === '=') changeZoom(ZOOM_STEP)
       else if (e.key === '-') changeZoom(-ZOOM_STEP)
+      else if (e.key === '0') setZoom(null)
+      else if (e.key === 't') setShowThumbs((v) => !v)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -260,35 +228,60 @@ export default function App() {
         />
       )}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        <Tip label="Show or hide slides (T)">
+          <Button variant={showThumbs ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowThumbs((v) => !v)}>
+            Slides
+          </Button>
+        </Tip>
         <span className="min-w-0 truncate text-sm font-medium">{filename}</span>
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => go(index - 1)}>
-            Prev
-          </Button>
+          <Tip label="Previous slide (←)">
+            <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => go(index - 1)}>
+              Prev
+            </Button>
+          </Tip>
           <span className="min-w-14 text-center text-sm tabular-nums">
             {index + 1} / {slides.length}
           </span>
-          <Button variant="ghost" size="sm" disabled={index === slides.length - 1} onClick={() => go(index + 1)}>
-            Next
-          </Button>
+          <Tip label="Next slide (→)">
+            <Button variant="ghost" size="sm" disabled={index === slides.length - 1} onClick={() => go(index + 1)}>
+              Next
+            </Button>
+          </Tip>
           <Separator orientation="vertical" className="mx-2 h-5" />
-          <Button variant="ghost" size="sm" aria-label="Zoom out" onClick={() => changeZoom(-ZOOM_STEP)}>
-            −
-          </Button>
-          <span className="min-w-12 text-center text-sm tabular-nums">{Math.round(zoom * 100)}%</span>
-          <Button variant="ghost" size="sm" aria-label="Zoom in" onClick={() => changeZoom(ZOOM_STEP)}>
-            +
-          </Button>
+          <Tip label="Zoom out (−)">
+            <Button variant="ghost" size="sm" aria-label="Zoom out" onClick={() => changeZoom(-ZOOM_STEP)}>
+              −
+            </Button>
+          </Tip>
+          <span className="min-w-12 text-center text-sm tabular-nums">{Math.round(effectiveZoom * 100)}%</span>
+          <Tip label="Zoom in (+)">
+            <Button variant="ghost" size="sm" aria-label="Zoom in" onClick={() => changeZoom(ZOOM_STEP)}>
+              +
+            </Button>
+          </Tip>
+          <Tip label="Fit slide to window (0)">
+            <Button variant={zoom === null ? 'secondary' : 'ghost'} size="sm" onClick={() => setZoom(null)}>
+              Fit
+            </Button>
+          </Tip>
           <Separator orientation="vertical" className="mx-2 h-5" />
-          <Button variant="outline" size="sm" onClick={() => setPresenting(true)}>
-            Present
-          </Button>
-          <Button variant="outline" size="sm" disabled={!!exporting} onClick={exportAll}>
-            {exporting ?? 'Export PNGs'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}>
-            Open
-          </Button>
+          <Tip label="Start slideshow (F5)">
+            <Button variant="outline" size="sm" onClick={() => setPresenting(true)}>
+              Present
+            </Button>
+          </Tip>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" aria-label="More actions" />}>
+              More
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => fileInput.current?.click()}>Open another file…</DropdownMenuItem>
+              <DropdownMenuItem disabled={!!exporting} onClick={exportAll}>
+                {exporting ?? 'Export slides as PNGs'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -299,23 +292,26 @@ export default function App() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <aside className="w-44 shrink-0 border-r">
-          <ScrollArea className="h-full">
-            <div className="flex flex-col gap-1 p-2">
-              {slides.map((slide, i) => (
-                <Thumbnail key={i} slide={slide} index={i} active={i === index} onSelect={() => go(i)} />
-              ))}
-            </div>
-          </ScrollArea>
-        </aside>
+        {showThumbs && (
+          <aside className="w-44 shrink-0 border-r">
+            <ScrollArea className="h-full">
+              <div className="flex flex-col gap-1 p-2">
+                {slides.map((slide, i) => (
+                  <Thumbnail key={i} slide={slide} index={i} active={i === index} onSelect={() => go(i)} />
+                ))}
+              </div>
+            </ScrollArea>
+          </aside>
+        )}
         <main
+          ref={mainRef}
           className="flex min-w-0 flex-1 overflow-auto bg-muted p-6"
           onWheel={(e) => {
             if (e.ctrlKey || e.metaKey) changeZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)
           }}
         >
           <div className="m-auto">
-            <SlideCanvas slide={slides[index]} zoom={zoom} />
+            <SlideCanvas slide={current} zoom={effectiveZoom} />
           </div>
         </main>
       </div>
