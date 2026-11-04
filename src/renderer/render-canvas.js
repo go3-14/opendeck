@@ -1,7 +1,8 @@
 // src/renderer/render-canvas.js
 // Draws a SlideModel (from parse-slide.js) onto an HTML <canvas>.
 //
-// export async function renderSlide(slideModel, canvas, scale, dpr) → void
+// export async function renderSlide(slideModel, canvas, scale, dpr, options) → boolean
+// export async function preloadSlideImages(slideModel) → void
 //
 // `scale` is CSS pixels per point. All model coordinates are in points.
 
@@ -38,38 +39,94 @@ function fillStyleFor(ctx, fill, x, y, w, h) {
 }
 
 // ─── Images ───────────────────────────────────────────────────────────────────
+//
+// Images are decoded *before* a slide is drawn (see preloadSlideImages), so the
+// draw phase is fully synchronous and a slide can be painted in one step.
 
-const imageCache = new WeakMap(); // loadBlob function → Promise<HTMLImageElement|null>
+const IMAGE_CACHE_LIMIT = 128; // decoded images kept; oldest are dropped (and re-decoded on demand)
+const IMAGE_TIMEOUT_MS = 30000; // never hang a render on a broken image
 
-/** Decodes the image behind a lazy media loader (cached per loader). */
-function loadImage(loadBlob) {
-  if (!loadBlob) return Promise.resolve(null);
-  if (imageCache.has(loadBlob)) return imageCache.get(loadBlob);
+// loadBlob function → { promise, img } ; insertion order doubles as LRU order
+const imageCache = new Map();
 
-  const pending = loadBlob()
-    .then(
-      (blob) =>
-        new Promise((resolve) => {
-          const url = URL.createObjectURL(blob);
-          const img = new Image();
-          let settled = false;
-          const finish = (value) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            URL.revokeObjectURL(url);
-            resolve(value);
-          };
-          const timer = setTimeout(() => finish(null), 10000); // never hang a render
-          img.onload = () => finish(img);
-          img.onerror = () => finish(null);
-          img.src = url;
-        }),
-    )
-    .catch(() => null);
-  imageCache.set(loadBlob, pending);
-  return pending;
+function touch(loadBlob, entry) {
+  imageCache.delete(loadBlob);
+  imageCache.set(loadBlob, entry);
+  while (imageCache.size > IMAGE_CACHE_LIMIT) {
+    imageCache.delete(imageCache.keys().next().value);
+  }
 }
+
+/** Decodes a Blob, preferring createImageBitmap (off the main thread). */
+async function decodeBlob(blob) {
+  if (typeof createImageBitmap === 'function' && blob.type !== 'image/svg+xml') {
+    try {
+      return await createImageBitmap(blob);
+    } catch {
+      // fall through to <img>, which handles more formats
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Decodes the image behind a lazy media loader. Resolves to null on failure. */
+export function loadImage(loadBlob) {
+  if (!loadBlob) return Promise.resolve(null);
+  const cached = imageCache.get(loadBlob);
+  if (cached) {
+    touch(loadBlob, cached);
+    return cached.promise;
+  }
+
+  const entry = { img: null, promise: null };
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`timed out after ${IMAGE_TIMEOUT_MS / 1000}s`)), IMAGE_TIMEOUT_MS));
+  entry.promise = Promise.race([loadBlob().then(decodeBlob), timeout])
+    .then((img) => {
+      entry.img = img;
+      return img;
+    })
+    .catch((err) => {
+      console.warn('[PPTX Viewer] Image failed to load:', err);
+      return null;
+    });
+  touch(loadBlob, entry);
+  return entry.promise;
+}
+
+/** The already-decoded image for a loader, or null (not loaded or failed). */
+function loadedImage(loadBlob) {
+  return (loadBlob && imageCache.get(loadBlob)?.img) || null;
+}
+
+/** Every image loader a slide needs: background, shapes, fills, group children. */
+function collectImageLoaders(slide) {
+  const loaders = new Set();
+  const visit = (shape) => {
+    if (!shape) return;
+    if (shape.type === 'image' && shape.loadBlob) loaders.add(shape.loadBlob);
+    if (shape.fill?.type === 'image' && shape.fill.loadBlob) loaders.add(shape.fill.loadBlob);
+    for (const child of shape.shapes || []) visit(child);
+  };
+  if (slide.background?.type === 'image' && slide.background.loadBlob) loaders.add(slide.background.loadBlob);
+  for (const shape of slide.shapes || []) visit(shape);
+  return [...loaders];
+}
+
+/** Starts decoding every image of a slide in parallel; resolves when all are ready. */
+export async function preloadSlideImages(slide) {
+  await Promise.all(collectImageLoaders(slide).map(loadImage));
+}
+
+const naturalSize = (img) => [img.naturalWidth ?? img.width, img.naturalHeight ?? img.height];
 
 /** Draws an image into (x, y, w, h), optionally cropping with fractions {l,t,r,b}. */
 function blit(ctx, img, crop, x, y, w, h) {
@@ -77,11 +134,10 @@ function blit(ctx, img, crop, x, y, w, h) {
     ctx.drawImage(img, x, y, w, h);
     return;
   }
-  const sx = crop.l * img.naturalWidth;
-  const sy = crop.t * img.naturalHeight;
-  const sw = img.naturalWidth * (1 - crop.l - crop.r);
-  const sh = img.naturalHeight * (1 - crop.t - crop.b);
-  if (sw > 0 && sh > 0) ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  const [iw, ih] = naturalSize(img);
+  const sw = iw * (1 - crop.l - crop.r);
+  const sh = ih * (1 - crop.t - crop.b);
+  if (sw > 0 && sh > 0) ctx.drawImage(img, crop.l * iw, crop.t * ih, sw, sh, x, y, w, h);
 }
 
 // ─── Geometry ─────────────────────────────────────────────────────────────────
@@ -503,7 +559,7 @@ function drawTextBlock(ctx, text, x, y, w, h, K) {
 
 // ─── Shapes ───────────────────────────────────────────────────────────────────
 
-async function drawShape(ctx, s, K) {
+function drawShape(ctx, s, K) {
   const w = s.w * K;
   const h = s.h * K;
   ctx.save();
@@ -522,7 +578,7 @@ async function drawShape(ctx, s, K) {
       ctx.fillStyle = style;
       ctx.fill();
     } else if (s.fill?.type === 'image') {
-      const img = await loadImage(s.fill.loadBlob);
+      const img = loadedImage(s.fill.loadBlob);
       if (img) {
         ctx.save();
         ctx.clip();
@@ -539,10 +595,10 @@ async function drawShape(ctx, s, K) {
   ctx.restore();
 }
 
-async function drawImageShape(ctx, s, K) {
+function drawImageShape(ctx, s, K) {
   const w = s.w * K;
   const h = s.h * K;
-  const img = await loadImage(s.loadBlob);
+  const img = loadedImage(s.loadBlob);
   if (!img) return;
 
   ctx.save();
@@ -612,7 +668,7 @@ function drawTable(ctx, s, K) {
   });
 }
 
-async function drawGroup(ctx, s, K) {
+function drawGroup(ctx, s, K) {
   ctx.save();
   const cx = (s.x + s.w / 2) * K;
   const cy = (s.y + s.h / 2) * K;
@@ -621,18 +677,18 @@ async function drawGroup(ctx, s, K) {
   if (s.flipH) ctx.scale(-1, 1);
   if (s.flipV) ctx.scale(1, -1);
   ctx.translate(-cx, -cy);
-  for (const child of s.shapes || []) await drawShapeDispatch(ctx, child, K);
+  for (const child of s.shapes || []) drawShapeDispatch(ctx, child, K);
   ctx.restore();
 }
 
-async function drawShapeDispatch(ctx, s, K) {
+function drawShapeDispatch(ctx, s, K) {
   if (!s) return;
   try {
     switch (s.type) {
-      case 'shape': await drawShape(ctx, s, K); break;
-      case 'image': await drawImageShape(ctx, s, K); break;
+      case 'shape': drawShape(ctx, s, K); break;
+      case 'image': drawImageShape(ctx, s, K); break;
       case 'table': drawTable(ctx, s, K); break;
-      case 'group': await drawGroup(ctx, s, K); break;
+      case 'group': drawGroup(ctx, s, K); break;
       case 'unsupported':
         drawFallbackBadge(ctx, s.x * K, s.y * K, s.w * K, s.h * K, s.label || 'Unknown');
         break;
@@ -646,39 +702,32 @@ async function drawShapeDispatch(ctx, s, K) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Renders a SlideModel onto a canvas at the given scale and device pixel ratio.
- *
- * @param {SlideModel} slideModel
- * @param {HTMLCanvasElement} canvas
- * @param {number} scale  CSS pixels per point (1 = 1pt = 1px)
- * @param {number} [dpr]  defaults to window.devicePixelRatio
- */
-export async function renderSlide(slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1) {
-  const { width, height, background, shapes } = slideModel;
+const RENDER_CACHE_LIMIT = 8;
+const renderCache = new Map(); // key → finished off-screen canvas (insertion order = LRU)
+const slideIds = new WeakMap();
+let nextSlideId = 1;
 
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    throw new Error(`Invalid slide dimensions: ${width}×${height}`);
-  }
-  if (!Number.isFinite(scale) || scale <= 0 || !Number.isFinite(dpr) || dpr <= 0) {
-    throw new Error(`Invalid canvas scale: ${scale} (DPR ${dpr})`);
-  }
+function cacheKey(slide, scale, dpr) {
+  if (!slideIds.has(slide)) slideIds.set(slide, nextSlideId++);
+  return `${slideIds.get(slide)}|${scale}|${dpr}`;
+}
 
+/** Draws a whole slide into a new off-screen canvas. Synchronous: images must be preloaded. */
+function drawSlideOffscreen(slide, scale, dpr) {
+  const { width, height, background, shapes } = slide;
   const cssW = width * scale;
   const cssH = height * scale;
   if (cssW > 32767 || cssH > 32767 || cssW * dpr > 268000000 || cssH * dpr > 268000000) {
     throw new Error(`Slide canvas is too large: ${Math.round(cssW)}×${Math.round(cssH)}px`);
   }
-  canvas.width = Math.round(cssW * dpr);
-  canvas.height = Math.round(cssH * dpr);
-  canvas.style.width = `${cssW}px`;
-  canvas.style.height = `${cssH}px`;
 
-  const ctx = canvas.getContext('2d');
+  const off = document.createElement('canvas');
+  off.width = Math.round(cssW * dpr);
+  off.height = Math.round(cssH * dpr);
+  const ctx = off.getContext('2d');
   if (!ctx) throw new Error('2D canvas context is unavailable');
   ctx.scale(dpr, dpr); // all drawing below is in CSS pixels
 
-  // Background
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, cssW, cssH);
   const bgStyle = fillStyleFor(ctx, background, 0, 0, cssW, cssH);
@@ -686,10 +735,70 @@ export async function renderSlide(slideModel, canvas, scale = 1, dpr = window.de
     ctx.fillStyle = bgStyle;
     ctx.fillRect(0, 0, cssW, cssH);
   } else if (background?.type === 'image') {
-    const img = await loadImage(background.loadBlob);
+    const img = loadedImage(background.loadBlob);
     if (img) blit(ctx, img, background.crop, 0, 0, cssW, cssH);
   }
 
-  // Shapes in z-order (array order)
-  for (const shape of shapes || []) await drawShapeDispatch(ctx, shape, scale);
+  for (const shape of shapes || []) drawShapeDispatch(ctx, shape, scale); // z-order = array order
+  return off;
+}
+
+/** Copies a finished off-screen slide onto the visible canvas in one step. */
+function commit(canvas, off, scale, slide) {
+  canvas.width = off.width; // resizing clears the canvas, but we redraw in the same task,
+  canvas.height = off.height; // so the browser never paints the blank state
+  canvas.style.width = `${slide.width * scale}px`;
+  canvas.style.height = `${slide.height * scale}px`;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D canvas context is unavailable');
+  ctx.drawImage(off, 0, 0);
+}
+
+/**
+ * Renders a SlideModel onto a canvas at the given scale and device pixel ratio.
+ *
+ * The slide is only ever shown complete: all images are decoded first, the slide
+ * is drawn off-screen, and the result replaces the canvas contents in one step.
+ * Until then the canvas keeps showing whatever it showed before.
+ *
+ * @param {SlideModel} slideModel
+ * @param {HTMLCanvasElement} canvas
+ * @param {number} scale  CSS pixels per point (1 = 1pt = 1px)
+ * @param {number} [dpr]  defaults to window.devicePixelRatio
+ * @param {{ signal?: AbortSignal, cache?: boolean }} [options]
+ *        signal: abandon the render (canvas untouched) if aborted;
+ *        cache: keep the finished slide so showing it again is instant
+ * @returns {Promise<boolean>} true if the canvas was updated, false if aborted
+ */
+export async function renderSlide(
+  slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1, { signal, cache = false } = {},
+) {
+  const { width, height } = slideModel;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error(`Invalid slide dimensions: ${width}×${height}`);
+  }
+  if (!Number.isFinite(scale) || scale <= 0 || !Number.isFinite(dpr) || dpr <= 0) {
+    throw new Error(`Invalid canvas scale: ${scale} (DPR ${dpr})`);
+  }
+
+  const key = cache ? cacheKey(slideModel, scale, dpr) : null;
+  let off = key ? renderCache.get(key) : null;
+
+  if (!off) {
+    if (signal?.aborted) return false;
+    await preloadSlideImages(slideModel);
+    if (signal?.aborted) return false;
+    off = drawSlideOffscreen(slideModel, scale, dpr);
+    if (key) {
+      renderCache.set(key, off);
+      while (renderCache.size > RENDER_CACHE_LIMIT) renderCache.delete(renderCache.keys().next().value);
+    }
+  } else if (key) {
+    renderCache.delete(key); // refresh LRU position
+    renderCache.set(key, off);
+  }
+
+  if (signal?.aborted) return false;
+  commit(canvas, off, scale, slideModel);
+  return true;
 }
