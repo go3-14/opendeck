@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { Slide } from '@/lib/pptx'
 import { useSlideRender } from '@/lib/useSlideRender'
 import { cn } from '@/lib/utils'
@@ -17,13 +17,9 @@ export function SlideCanvas({ slide, zoom }: { slide: Slide; zoom: number }) {
   )
 }
 
-/** A small slide preview. Rendered only once it is near the viewport, through a shared queue. */
-export function Thumbnail({
-  slide, index, active, onSelect,
-}: { slide: Slide; index: number; active: boolean; onSelect: () => void }) {
-  const ref = useRef<HTMLCanvasElement>(null)
+/** True once the element has come near the viewport (and stays true). */
+export function useNearViewport(ref: RefObject<Element | null>): boolean {
   const [visible, setVisible] = useState(false)
-
   useEffect(() => {
     const el = ref.current
     if (!el || visible) return
@@ -38,15 +34,37 @@ export function Thumbnail({
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [visible])
-  useSlideRender(ref, slide, 144 / slide.width, 1, { enabled: visible, limited: true })
+  }, [ref, visible])
+  return visible
+}
+
+/** A small slide preview, drawn lazily through the shared thumbnail queue. */
+export function SlidePreview({ slide, width, className }: { slide: Slide; width: number; className?: string }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  const visible = useNearViewport(ref)
+  useSlideRender(ref, slide, width / slide.width, 1, { enabled: visible, limited: true })
+  return (
+    <canvas
+      ref={ref}
+      className={cn('block border bg-white', className)}
+      style={{ width, height: (width * slide.height) / slide.width }}
+    />
+  )
+}
+
+/** One row of the slide list. */
+export function Thumbnail({
+  slide, index, active, onSelect,
+}: { slide: Slide; index: number; active: boolean; onSelect: () => void }) {
+  const rowRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    if (active) ref.current?.scrollIntoView({ block: 'nearest' })
+    if (active) rowRef.current?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
   return (
     <button
+      ref={rowRef}
       type="button"
       onClick={onSelect}
       aria-label={`Slide ${index + 1}`}
@@ -54,11 +72,7 @@ export function Thumbnail({
       className="flex w-full items-start gap-2 rounded-md p-1 text-left hover:bg-accent"
     >
       <span className="w-4 pt-1 text-right text-xs text-muted-foreground">{index + 1}</span>
-      <canvas
-        ref={ref}
-        className={cn('block border bg-white', active && 'outline-2 outline-offset-1 outline-primary')}
-        style={{ width: 144, height: (144 * slide.height) / slide.width }}
-      />
+      <SlidePreview slide={slide} width={144} className={active ? 'outline-2 outline-offset-1 outline-primary' : undefined} />
     </button>
   )
 }
