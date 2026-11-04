@@ -12,6 +12,7 @@
 // Slide 5  four large pictures over a picture background (slow-to-load images)
 // Slide 6  animation builds (entrance/exit on click) for the slideshow
 // Slide 7  SmartArt fallback drawing, table style, freeform shape, drop shadow
+// Slide 8  charts: clustered column, line, pie
 //
 // What each slide should look like is listed in tests/README.md.
 
@@ -354,17 +355,64 @@ const slide7 = slideXml(
   diagramFrame + styledTable + freeform + shadowed,
 );
 
+// Slide 8: charts (clustered column, line, pie) drawn from the values cached in the chart parts.
+const C_NS = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
+const strCache = (items) =>
+  `<c:strCache><c:ptCount val="${items.length}"/>${items.map((c, i) => `<c:pt idx="${i}"><c:v>${c}</c:v></c:pt>`).join('')}</c:strCache>`;
+const numCache = (items) =>
+  `<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${items.length}"/>${items.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join('')}</c:numCache>`;
+const chartSer = (idx, name, spPr, cats, vals, extra = '') =>
+  `<c:ser><c:idx val="${idx}"/><c:order val="${idx}"/><c:tx><c:strRef><c:f>Sheet1!$B$1</c:f>${strCache([name])}</c:strRef></c:tx>` +
+  `<c:spPr>${spPr}</c:spPr>${extra}<c:cat><c:strRef><c:f>Sheet1!$A$2:$A$4</c:f>${strCache(cats)}</c:strRef></c:cat>` +
+  `<c:val><c:numRef><c:f>Sheet1!$B$2:$B$4</c:f>${numCache(vals)}</c:numRef></c:val></c:ser>`;
+const axes =
+  '<c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>' +
+  '<c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:crossAx val="1"/></c:valAx>';
+const chartDoc = (title, plot, legendPos) =>
+  `${HEAD}<c:chartSpace xmlns:c="${C_NS}" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${REL}"><c:chart>` +
+  (title ? `<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>${title}</a:t></a:r></a:p></c:rich></c:tx></c:title>` : '') +
+  `<c:autoTitleDeleted val="0"/><c:plotArea><c:layout/>${plot}</c:plotArea>` +
+  (legendPos ? `<c:legend><c:legendPos val="${legendPos}"/></c:legend>` : '') +
+  '<c:plotVisOnly val="1"/></c:chart></c:chartSpace>';
+
+const cats = ['Q1', 'Q2', 'Q3'];
+const columnChart = chartDoc('Sales',
+  '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>' +
+  chartSer(0, 'North', solid('FF0000'), cats, [10, 20, 30]) + chartSer(1, 'South', solid('0000FF'), cats, [15, 25, 5]) +
+  `<c:gapWidth val="100"/><c:axId val="1"/><c:axId val="2"/></c:barChart>${axes}`, 'b');
+const lineChart = chartDoc('Trend',
+  '<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>' +
+  chartSer(0, 'Alpha', '<a:ln w="28575"><a:solidFill><a:srgbClr val="00B050"/></a:solidFill></a:ln>', cats, [5, 15, 10]) +
+  chartSer(1, 'Beta', '<a:ln w="28575"><a:solidFill><a:srgbClr val="ED7D31"/></a:solidFill></a:ln>', cats, [8, 6, 18]) +
+  `<c:marker val="1"/><c:axId val="1"/><c:axId val="2"/></c:lineChart>${axes}`, 'b');
+const pieChart = chartDoc('Share',
+  '<c:pieChart><c:varyColors val="1"/>' +
+  chartSer(0, 'Share', '<a:ln w="19050"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln>', ['Red', 'Green', 'Blue'], [50, 30, 20],
+    `<c:dPt><c:idx val="0"/><c:bubble3D val="0"/><c:spPr>${solid('FFC000')}</c:spPr></c:dPt>`) +
+  '<c:dLbls><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="1"/><c:showBubbleSize val="0"/></c:dLbls>' +
+  '<c:firstSliceAng val="0"/></c:pieChart>', 'r');
+
+const chartFrame = (id, x, rId) =>
+  `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${id}" name="Chart ${id}"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>` +
+  `<p:xfrm><a:off x="${Math.round(x * IN)}" y="${Math.round(1.6 * IN)}"/><a:ext cx="${4 * IN}" cy="${3.6 * IN}"/></p:xfrm>` +
+  `<a:graphic><a:graphicData uri="${C_NS}"><c:chart xmlns:c="${C_NS}" r:id="${rId}"/></a:graphicData></a:graphic></p:graphicFrame>`;
+
+const slide8 = slideXml(
+  ph(2, 'Title', 'type="title"', '', tx(para(run('Charts')))) +
+  chartFrame(10, 0.4, 'rId8') + chartFrame(11, 4.7, 'rId9') + chartFrame(12, 9, 'rId10'),
+);
+
 // ─── Package ──────────────────────────────────────────────────────────────────
 const zip = new JSZip();
 zip.file('[Content_Types].xml', `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/></Types>`);
 zip.file('_rels/.rels', rels(rel('rId1', 'officeDocument', 'ppt/presentation.xml')));
 zip.file('ppt/presentation.xml',
   `${HEAD}<p:presentation ${NS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>` +
-  '<p:sldIdLst>' + [2, 3, 4, 5, 6, 7, 8].map((n) => `<p:sldId id="${254 + n}" r:id="rId${n}"/>`).join('') +
+  '<p:sldIdLst>' + [2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<p:sldId id="${254 + n}" r:id="rId${n}"/>`).join('') +
   '</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>');
 zip.file('ppt/_rels/presentation.xml.rels', rels(
   rel('rId1', 'slideMaster', 'slideMasters/slideMaster1.xml') +
-  [1, 2, 3, 4, 5, 6, 7].map((n) => rel(`rId${n + 1}`, 'slide', `slides/slide${n}.xml`)).join('') +
+  [1, 2, 3, 4, 5, 6, 7, 8].map((n) => rel(`rId${n + 1}`, 'slide', `slides/slide${n}.xml`)).join('') +
   rel('rId20', 'theme', 'theme/theme1.xml')));
 zip.file('ppt/theme/theme1.xml', themeXml);
 zip.file('ppt/slideMasters/slideMaster1.xml', masterXml);
@@ -377,12 +425,13 @@ zip.file('ppt/slideLayouts/slideLayout2.xml', layout2Xml);
 for (const n of [1, 2]) {
   zip.file(`ppt/slideLayouts/_rels/slideLayout${n}.xml.rels`, rels(rel('rId1', 'slideMaster', '../slideMasters/slideMaster1.xml')));
 }
-[[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2], [slide5, 2], [slide6, 2], [slide7, 2]].forEach(([xml, layout], i) => {
+[[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2], [slide5, 2], [slide6, 2], [slide7, 2], [slide8, 2]].forEach(([xml, layout], i) => {
   const n = i + 1;
   zip.file(`ppt/slides/slide${n}.xml`, xml);
   zip.file(`ppt/slides/_rels/slide${n}.xml.rels`, rels(
     rel('rId1', 'slideLayout', `../slideLayouts/slideLayout${layout}.xml`) +
     (n === 3 ? rel('rId2', 'image', '../media/image1.png') : '') +
+    (n === 8 ? [1, 2, 3].map((k) => rel(`rId${k + 7}`, 'chart', `../charts/chart${k}.xml`)).join('') : '') +
     (n === 7
       ? rel('rId8', 'diagramData', '../diagrams/data1.xml') +
         `<Relationship Id="rId9" Type="http://schemas.microsoft.com/office/2007/relationships/diagramDrawing" Target="../diagrams/drawing1.xml"/>`
@@ -393,6 +442,9 @@ zip.file('ppt/media/image1.png', quadrantPng());
 zip.file('ppt/diagrams/data1.xml', diagramData);
 zip.file('ppt/diagrams/drawing1.xml', diagramDrawing);
 zip.file('ppt/tableStyles.xml', tableStyles);
+zip.file('ppt/charts/chart1.xml', columnChart);
+zip.file('ppt/charts/chart2.xml', lineChart);
+zip.file('ppt/charts/chart3.xml', pieChart);
 HEAVY_TINTS.forEach((tint, k) => zip.file(`ppt/media/heavy${k}.png`, noisyPng(1600, 1200, tint)));
 zip.file('ppt/media/heavy4.png', noisyPng(1920, 1080, [120, 120, 160]));
 
