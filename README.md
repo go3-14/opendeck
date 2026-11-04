@@ -74,20 +74,30 @@ Intercepted:   downloads.onCreated/onChanged                       loadPptx(byte
 
 ## Rendering scope
 
-Supported: text boxes with basic formatting, theme colours and fonts, solid and gradient fills, basic shapes, PNG/JPEG/GIF/BMP images, simple tables, slide background colours, zoom, thumbnails, and export as a ZIP of PNGs.
+Supported:
+
+- text with master/layout/slide style inheritance (sizes, bold/italic, colours, alignment, bullets and auto-numbering, spacing, indents, super/subscript, slide-number fields), wrapping, vertical anchoring and shrink-on-overflow;
+- placeholders that inherit position, fill, line and text properties from their layout and master, plus non-placeholder layout/master graphics drawn behind the slide;
+- theme colours with colour-map overrides (for example dark layouts), per-master themes, and `<p:style>` fill/line/font references;
+- solid, gradient (linear and radial) and picture backgrounds and fills;
+- preset shapes (common rectangles, polygons, arrows, stars, connectors), groups with child scaling, rotation and flips, dashed lines and arrowheads;
+- PNG/JPEG/GIF/BMP/WebP/SVG pictures with cropping, loaded lazily;
+- tables with merged cells and explicit fills/borders;
+- zoom, thumbnails, and export as a ZIP of PNGs.
 
 Known limitations:
 
 - charts and SmartArt show a fallback badge; video, audio, animations and transitions are ignored;
-- SVG, EMF and WMF images are not rendered;
-- placeholder geometry and text styles are not inherited from layouts/masters, so placeholder-based text may be missing or unstyled;
-- group shapes ignore child offset/scale; connectors are drawn as rectangles;
-- backgrounds support solid fills only;
-- text wrapping and typography are approximate.
+- EMF/WMF images are not rendered;
+- custom (freeform) geometry is drawn as a rectangle, and less common preset shapes fall back to rectangles;
+- table styles from `tableStyles.xml` (banding, header fills) are not applied; only explicit cell fills and borders are;
+- pattern fills are approximated by their foreground colour; shadows, glow and other effects are ignored;
+- text metrics depend on installed fonts, so line breaks can differ slightly from PowerPoint;
+- RTL text, vertical text and WordArt are not handled.
 
 ## Status
 
-Verified with generated test decks in a browser against the built viewer (manual open, intercepted handoff, slide order, fills, error messages). The service worker's download interception has not been exercised in a real Chrome session yet. The renderer has not been validated against a broad set of real-world decks.
+Verified with generated test decks in a browser against the built viewer (manual open, intercepted handoff, slide order, placeholder and text-style inheritance, groups, connectors, crops, tables, colour-map overrides, error messages). See `tests/README.md`. The service worker's download interception has not been exercised in a real Chrome session yet. The renderer has not been validated against a broad set of real-world decks.
 
 ## Troubleshooting
 
