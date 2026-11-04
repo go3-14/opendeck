@@ -5,10 +5,26 @@
 
 'use strict';
 
-import { unzipPptx } from './renderer/unzip.js';
-import { parseThemeChain } from './renderer/parse-theme.js';
-import { parseSlide, parseSlideSize } from './renderer/parse-slide.js';
-import { renderSlide } from './renderer/render-canvas.js';
+// Load renderer modules after the viewer shell has started. This keeps the
+// manual picker usable even if a renderer module fails to import in a browser
+// with a stale extension cache or an incompatible module error.
+let unzipPptx;
+let parseThemeChain;
+let parseSlide;
+let parseSlideSize;
+let renderSlide;
+const rendererReady = Promise.all([
+  import('./renderer/unzip.js'),
+  import('./renderer/parse-theme.js'),
+  import('./renderer/parse-slide.js'),
+  import('./renderer/render-canvas.js'),
+]).then(([unzipModule, themeModule, slideModule, canvasModule]) => {
+  unzipPptx = unzipModule.unzipPptx;
+  parseThemeChain = themeModule.parseThemeChain;
+  parseSlide = slideModule.parseSlide;
+  parseSlideSize = slideModule.parseSlideSize;
+  renderSlide = canvasModule.renderSlide;
+});
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const IDB_DB_NAME = 'pptx_viewer';
@@ -34,6 +50,7 @@ const overlayMsg = $('overlay-message');
 const overlaySpinner = $('overlay-spinner');
 const app = $('app');
 const manualPicker = $('manual-picker');
+const pickerError = $('picker-error');
 const fileInput = $('file-input');
 const slideCanvas = $('slide-canvas');
 const thumbnailList = $('thumbnail-list');
@@ -75,7 +92,11 @@ function readIdb(db, key, consume = true) {
 }
 
 // ─── Overlay helpers ──────────────────────────────────────────────────────────
+let overlayHideTimer = null;
+
 function showOverlay(message, spinner = true) {
+  // A pending hide from an earlier hideOverlay() must not re-hide this overlay.
+  clearTimeout(overlayHideTimer);
   overlayMsg.textContent = message;
   overlaySpinner.style.display = spinner ? 'block' : 'none';
   overlay.classList.remove('hidden');
@@ -84,17 +105,52 @@ function showOverlay(message, spinner = true) {
 
 function hideOverlay() {
   overlay.classList.add('hidden');
-  setTimeout(() => overlay.setAttribute('hidden', ''), 350);
+  clearTimeout(overlayHideTimer);
+  overlayHideTimer = setTimeout(() => overlay.setAttribute('hidden', ''), 350);
 }
 
+/** Blocking error with no way forward (only for fatal startup problems). */
 function showError(message) {
   showOverlay(`⚠ ${message}`, false);
 }
+
+/**
+ * Non-fatal failure: hide the overlay and the app, show the file picker with
+ * the error message so the user can immediately try another file.
+ */
+function failToPicker(message) {
+  hideOverlay();
+  app.setAttribute('hidden', '');
+  manualPicker.removeAttribute('hidden');
+  pickerError.textContent = `⚠ ${message}`;
+  pickerError.removeAttribute('hidden');
+}
+
+// Surface anything that escapes a try/catch instead of leaving a stuck spinner.
+window.addEventListener('error', e => {
+  console.error('[PPTX Viewer] Uncaught error:', e.error || e.message);
+  failToPicker(`Unexpected error: ${e.message || 'see console'}`);
+});
+window.addEventListener('unhandledrejection', e => {
+  console.error('[PPTX Viewer] Unhandled rejection:', e.reason);
+  failToPicker(`Unexpected error: ${e.reason?.message || e.reason || 'see console'}`);
+});
 
 // ─── Mode Detection ───────────────────────────────────────────────────────────
 async function init() {
   const params = new URLSearchParams(location.search);
   const mode = params.get('mode') || 'manual';
+
+  // Wire the UI first so buttons/drop work even if the renderer fails to load.
+  wireUI();
+
+  try {
+    await rendererReady;
+  } catch (err) {
+    console.error('[PPTX Viewer] Renderer failed to load:', err);
+    failToPicker(`Renderer failed to load: ${err.message || err}`);
+    return;
+  }
 
   if (mode === 'intercepted') {
     showOverlay('Loading presentation…');
@@ -102,8 +158,6 @@ async function init() {
   } else {
     showManualPicker();
   }
-
-  wireUI();
 }
 
 // ─── File Loading: from storage ───────────────────────────────────────────────
@@ -118,7 +172,7 @@ async function loadFromStorage() {
     let handoffId = params.get('handoff');
 
     if (!handoffId) {
-      showManualPicker();
+      failToPicker('No presentation was handed to the viewer. Please choose a file.');
       return;
     }
 
@@ -127,15 +181,14 @@ async function loadFromStorage() {
     db.close();
 
     if (!payload?.bytes) {
-      showManualPicker();
+      failToPicker('The downloaded presentation is no longer available (already opened or expired). Please choose the file.');
       return;
     }
 
     await loadBytes(payload.bytes, payload.filename || 'presentation.pptx');
   } catch (err) {
     console.error('[PPTX Viewer] Storage read error:', err);
-    showError('Could not load the presentation. Please open it manually.');
-    showManualPicker();
+    failToPicker(`Could not load the presentation: ${err.message || err}`);
   }
 }
 
@@ -144,14 +197,16 @@ async function loadFromStorage() {
 function showManualPicker() {
   hideOverlay();
   app.setAttribute('hidden', '');
+  pickerError.setAttribute('hidden', '');
   manualPicker.removeAttribute('hidden');
 }
 
 async function loadFile(file) {
   if (!file || !file.name.toLowerCase().endsWith('.pptx')) {
-    showError('Please choose a .pptx file.');
+    failToPicker('Please choose a .pptx file.');
     return;
   }
+  pickerError.setAttribute('hidden', '');
   manualPicker.setAttribute('hidden', '');
   showOverlay(`Loading "${file.name}"…`);
   try {
@@ -159,8 +214,7 @@ async function loadFile(file) {
     await loadBytes(bytes, file.name);
   } catch (err) {
     console.error('[PPTX Viewer] File read error:', err);
-    showError(`Could not read the file: ${err.message || err}`);
-    manualPicker.removeAttribute('hidden');
+    failToPicker(`Could not read the file: ${err.message || err}`);
   }
 }
 
@@ -177,29 +231,25 @@ async function loadBytes(bytes, filename) {
   toolbarFilename.textContent = filename;
 
   try {
+    await rendererReady;
+
     // 1. Unzip
     const {
       slideXmls, layoutXmls, masterXmls, themeXml,
-      media, slideRels, slidePaths, layoutPaths, masterPaths,
+      media, slideRels, imageRels, presentationXml, slidePaths, layoutPaths, masterPaths,
     } = await unzipPptx(bytes);
 
     if (!slideXmls.length) {
-      showError('No slides found in this file.');
+      failToPicker('No slides found in this file.');
       return;
     }
 
     showOverlay(`Parsing ${slideXmls.length} slides…`);
 
-    // 2. Build slide→layout→master lookup
-    // slideRels maps slidePath → { layoutPath, masterPath }
-    // We also need to build image rels for each slide from the ZIP
-    const imageRelsMap = await buildImageRels(bytes, slidePaths);
-
-    // 3. Parse slide size from presentation.xml
-    const presentationXml = await extractPresentationXml(bytes);
+    // 2. Parse slide size from the already-extracted presentation.xml
     const slideSize = parseSlideSize(presentationXml);
 
-    // 4. Parse each slide
+    // 3. Parse each slide
     state.slides = [];
     for (let i = 0; i < slideXmls.length; i++) {
       showOverlay(`Parsing slide ${i + 1} of ${slideXmls.length}…`);
@@ -215,82 +265,29 @@ async function loadBytes(bytes, filename) {
       const themeCtx = parseThemeChain(slideXmls[i], layoutXml, masterXml, themeXml);
       const slideModel = parseSlide(
         slideXmls[i], themeCtx, media, slideSize,
-        imageRelsMap.get(slidePaths[i]) || new Map()
+         imageRels.get(slidePaths[i]) || new Map()
       );
 
       state.slides.push(slideModel);
     }
 
-    // 5. Render all thumbnails
-    showOverlay('Rendering thumbnails…');
-    await renderThumbnails();
-
-    // 6. Show first slide
+    // 5. Show the first slide immediately. Thumbnail generation can be slow
+    // for large decks and must never block the actual viewer.
     state.currentIndex = 0;
-    await goToSlide(0);
-
-    // 7. Show UI
     slideTotalEl.textContent = state.slides.length;
     app.removeAttribute('hidden');
     hideOverlay();
+    await goToSlide(0);
+
+    // 6. Populate thumbnails in the background after the viewer is usable.
+    renderThumbnails()
+      .then(() => updateThumbnailActive(state.currentIndex))
+      .catch(err => console.warn('[PPTX Viewer] Thumbnail generation failed:', err));
 
   } catch (err) {
     console.error('[PPTX Viewer] Pipeline error:', err);
-    showError(`Failed to render presentation: ${err.message}`);
-    manualPicker.removeAttribute('hidden');
+    failToPicker(`Failed to render presentation: ${err.message || err}`);
   }
-}
-
-/**
- * Extracts ppt/presentation.xml from the PPTX archive.
- */
-async function extractPresentationXml(bytes) {
-  try {
-    const zip = await JSZip.loadAsync(bytes);
-    const entry = zip.file('ppt/presentation.xml');
-    return entry ? entry.async('text') : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Builds a Map<slidePath, Map<rId, zipMediaPath>> for image relationships.
- */
-async function buildImageRels(bytes, slidePaths) {
-  const result = new Map();
-  try {
-    const zip = await JSZip.loadAsync(bytes);
-    const REL_TYPE_IMG = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
-
-    for (const slidePath of slidePaths) {
-      const dir = slidePath.substring(0, slidePath.lastIndexOf('/'));
-      const base = slidePath.substring(slidePath.lastIndexOf('/') + 1);
-      const relsPath = `${dir}/_rels/${base}.rels`;
-      const relsEntry = zip.file(relsPath);
-      if (!relsEntry) continue;
-
-      const relsXml = await relsEntry.async('text');
-      const parser = new DOMParser();
-      const relsDoc = parser.parseFromString(relsXml, 'application/xml');
-      const rIdMap = new Map();
-
-      for (const rel of relsDoc.querySelectorAll('Relationship')) {
-        if ((rel.getAttribute('Type') || '') === REL_TYPE_IMG) {
-          const rId = rel.getAttribute('Id');
-          const target = rel.getAttribute('Target');
-          // Resolve relative target to absolute zip path
-          const resolved = new URL(target, `https://x/${slidePath}`).pathname.slice(1);
-          rIdMap.set(rId, resolved);
-        }
-      }
-
-      result.set(slidePath, rIdMap);
-    }
-  } catch (err) {
-    console.warn('[PPTX Viewer] buildImageRels error:', err);
-  }
-  return result;
 }
 
 // ─── Thumbnail Strip ──────────────────────────────────────────────────────────
@@ -343,6 +340,14 @@ async function renderThumbnails() {
 
     item.addEventListener('click', () => goToSlide(i));
     item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') goToSlide(i); });
+
+    // Yield between slides so the browser can paint progress and service
+    // input while a large presentation is being prepared.
+    if (i < state.slides.length - 1) {
+      // setTimeout, not requestAnimationFrame: rAF is paused in background tabs,
+      // which would stall thumbnail generation for intercepted (new-tab) opens.
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   }
 }
 

@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PPTX Viewer</title>
   <meta name="description" content="Client-side PPTX presentation viewer — no upload, no server." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="viewer.css" />
 </head>
 <body>
@@ -127,6 +124,7 @@
         </svg>
       </div>
       <h1 id="picker-title" class="manual-picker__title">Open a PPTX File</h1>
+      <p id="picker-error" class="manual-picker__error" role="alert" hidden></p>
       <p class="manual-picker__subtitle">Your file never leaves this device. No upload, no server.</p>
       <label for="file-input" class="manual-picker__btn">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
