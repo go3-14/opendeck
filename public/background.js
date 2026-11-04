@@ -19,6 +19,36 @@ const PRESENTATION_MIMES = new Set([
 ]);
 const STALE_HANDOFF_MS = 60 * 60 * 1000; // 1 hour
 
+// Access to websites is optional: the user turns it on in the viewer's settings.
+const hasHostAccess = () => chrome.permissions.contains({ origins: ['<all_urls>'] });
+const SETTINGS_URL = `${VIEWER_URL}?mode=manual&settings=1`;
+let notifiedNoAccess = false;
+
+/** Tells the user (once per browser session) how to allow opening downloads. */
+function notifyNeedsAccess() {
+  if (notifiedNoAccess) return;
+  notifiedNoAccess = true;
+  chrome.notifications.create('pptx-needs-access', {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+    title: 'PPTX Viewer — one more step',
+    message: 'Click here to allow opening downloaded presentations in the viewer. The file downloads normally until then.',
+    priority: 1,
+  });
+}
+
+chrome.notifications.onClicked.addListener((id) => {
+  if (id === 'pptx-needs-access') {
+    chrome.tabs.create({ url: SETTINGS_URL });
+    chrome.notifications.clear(id);
+  }
+});
+
+// First install: show the settings so access can be granted right away.
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') chrome.tabs.create({ url: SETTINGS_URL });
+});
+
 // Deduplication: prevent processing the same download twice
 const processingIds = new Set();
 // Downloads whose filename/MIME were not known yet at onCreated time.
@@ -178,6 +208,12 @@ async function handlePptxDownload(item) {
     return;
   }
 
+  if (!(await hasHostAccess())) {
+    // No permission yet: leave the native download alone and explain how to enable this.
+    notifyNeedsAccess();
+    return;
+  }
+
   processingIds.add(item.id);
   try {
     const name = displayName(item);
@@ -228,6 +264,10 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId !== MENU_ID || !info.linkUrl) return;
   const url = info.linkUrl;
+  if (!(await hasHostAccess())) {
+    chrome.tabs.create({ url: SETTINGS_URL });
+    return;
+  }
   try {
     const handoffId = await fetchAndStore(url, nameFromUrl(url));
     await chrome.tabs.create({

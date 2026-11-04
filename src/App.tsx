@@ -3,6 +3,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import Presenter from '@/components/Presenter'
 import { PrintPages } from '@/components/PrintPages'
 import { SearchBar } from '@/components/SearchBar'
+import { SettingsDialog } from '@/components/SettingsDialog'
 import { SlideCanvas, Thumbnail } from '@/components/SlideCanvas'
 import { Tip } from '@/components/Tip'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { ACCEPT, formatSize, isPresentationFile, isSlideshowFile } from '@/lib/files'
 import { consumeHandoff } from '@/lib/idb'
+import { permissionsSupported } from '@/lib/permissions'
 import { prefetchAround } from '@/lib/prefetch'
 import { exportSlidesAsZip, loadPptx, type Slide } from '@/lib/pptx'
 import { slideToJpegUrl, slideToPng } from '@/lib/slideImage'
@@ -45,6 +47,8 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [recent, setRecent] = useState<RecentEntry[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
+  // ?settings=1 is used by the first-run page and the "allow downloads" notification
+  const [settingsOpen, setSettingsOpen] = useState(() => new URLSearchParams(location.search).has('settings'))
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
@@ -289,6 +293,14 @@ export default function App() {
     }
   }
 
+  const settingsEl = (
+    <SettingsDialog
+      open={settingsOpen}
+      onOpenChange={setSettingsOpen}
+      onClearRecent={() => void clearRecent().then(refreshRecent)}
+    />
+  )
+
   const fileInputEl = (
     <input
       ref={fileInput}
@@ -306,6 +318,7 @@ export default function App() {
     return (
       <div className={cn('flex h-screen flex-col items-center justify-center gap-4 p-6', dragging && 'bg-accent')}>
         {fileInputEl}
+        {settingsEl}
         {status === 'loading' ? (
           <p className="text-sm text-muted-foreground" role="status">{message}</p>
         ) : (
@@ -322,6 +335,11 @@ export default function App() {
               </Alert>
             )}
             <Button onClick={() => fileInput.current?.click()}>Choose file</Button>
+            {permissionsSupported && (
+              <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
+                Settings
+              </Button>
+            )}
             {recent.length > 0 && (
               <section className="mt-4 w-full max-w-sm" aria-label="Recent files">
                 <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
@@ -361,6 +379,7 @@ export default function App() {
     {printPages && <PrintPages pages={printPages} />}
     <div className={cn('flex h-screen flex-col print:hidden', dragging && 'bg-accent')}>
       {fileInputEl}
+      {settingsEl}
       {presenting && (
         <Presenter
           slides={slides}
@@ -457,6 +476,7 @@ export default function App() {
               <DropdownMenuItem disabled={!!exporting} onClick={exportAll}>
                 {exporting ?? 'Export slides as PNGs'}
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSettingsOpen(true)}>Settings…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
