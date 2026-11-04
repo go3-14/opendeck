@@ -52,6 +52,16 @@ See [PRIVACY.md](PRIVACY.md) for exactly what is processed, stored and requested
 
 ## Install
 
+### From a GitHub release (no build needed)
+
+1. Download `pptx-viewer-<version>.zip` from the [Releases page](https://github.com/go3-14/pptx_viewer_extension/releases) and unzip it into a folder you will keep.
+2. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
+3. Click **Load unpacked** and select the unzipped folder (the one containing `manifest.json`).
+
+Browsers do not update extensions installed this way; download the new zip and reload it from the extensions page. Chrome may show a "disable developer mode extensions" reminder on start-up.
+
+### From source
+
 Requirements: Node 20 or newer, and Chrome or Edge.
 
 ```bash
