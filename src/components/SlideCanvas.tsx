@@ -54,8 +54,8 @@ export function SlidePreview({ slide, width, className }: { slide: Slide; width:
 
 /** One row of the slide list. */
 export function Thumbnail({
-  slide, index, active, onSelect,
-}: { slide: Slide; index: number; active: boolean; onSelect: () => void }) {
+  slide, index, active, match, onSelect,
+}: { slide: Slide; index: number; active: boolean; match?: boolean; onSelect: () => void }) {
   const rowRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -71,7 +71,10 @@ export function Thumbnail({
       aria-current={active}
       className="flex w-full items-start gap-2 rounded-md p-1 text-left hover:bg-accent"
     >
-      <span className="w-4 pt-1 text-right text-xs text-muted-foreground">{index + 1}</span>
+      <span className="flex w-4 flex-col items-end gap-1 pt-1 text-xs text-muted-foreground">
+        {index + 1}
+        {match && <span className="size-1.5 rounded-full bg-primary" aria-label="Matches the search" />}
+      </span>
       <SlidePreview slide={slide} width={144} className={active ? 'outline-2 outline-offset-1 outline-primary' : undefined} />
     </button>
   )

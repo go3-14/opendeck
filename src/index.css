@@ -128,3 +128,27 @@
     @apply font-sans;
     }
 }
+/* Printing / Save as PDF: one slide image per landscape page, nothing else. */
+@page {
+  size: landscape;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+
+  .print-pages img {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    break-after: page;
+  }
+
+  .print-pages img:last-child {
+    break-after: auto;
+  }
+}

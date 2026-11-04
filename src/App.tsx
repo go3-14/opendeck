@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Presenter from '@/components/Presenter'
+import { PrintPages } from '@/components/PrintPages'
+import { SearchBar } from '@/components/SearchBar'
 import { SlideCanvas, Thumbnail } from '@/components/SlideCanvas'
 import { Tip } from '@/components/Tip'
 import { Button } from '@/components/ui/button'
@@ -14,6 +16,8 @@ import { ACCEPT, formatSize, isPresentationFile, isSlideshowFile } from '@/lib/f
 import { consumeHandoff } from '@/lib/idb'
 import { prefetchAround } from '@/lib/prefetch'
 import { exportSlidesAsZip, loadPptx, type Slide } from '@/lib/pptx'
+import { slideToJpegUrl, slideToPng } from '@/lib/slideImage'
+import { outline, searchSlides, slideText } from '@/lib/slideText'
 import { addRecent, clearRecent, listRecent, loadRecent, type RecentEntry } from '@/lib/recent'
 import { cn } from '@/lib/utils'
 
@@ -40,6 +44,11 @@ export default function App() {
   const [presenting, setPresenting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [recent, setRecent] = useState<RecentEntry[]>([])
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [cursor, setCursor] = useState(0)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [printPages, setPrintPages] = useState<string[] | null>(null)
 
   const refreshRecent = useCallback(() => {
     listRecent().then(setRecent).catch(() => setRecent([]))
@@ -153,11 +162,89 @@ export default function App() {
     if (status === 'ready') prefetchAround(slides, index)
   }, [status, slides, index])
 
+  // ── Search ────────────────────────────────────────────────────────────────
+  const deferredQuery = useDeferredValue(query)
+  const hits = useMemo(() => searchSlides(slides, deferredQuery), [slides, deferredQuery])
+  const hitSlides = useMemo(() => new Set(hits.map((h) => h.index)), [hits])
+  const indexRef = useRef(index)
+  indexRef.current = index
+
+  // A new result set jumps to the first match at or after the current slide.
+  useEffect(() => {
+    if (!hits.length) return
+    const first = Math.max(0, hits.findIndex((h) => h.index >= indexRef.current))
+    setCursor(first)
+    setIndex(hits[first].index)
+  }, [hits])
+
+  const goToHit = useCallback((i: number) => {
+    setCursor(i)
+    if (hits[i]) setIndex(hits[i].index)
+  }, [hits])
+
+  // ── Copy and print ────────────────────────────────────────────────────────
+  const noticeTimer = useRef<number>(0)
+  const showNotice = useCallback((message: string | null, forMs = 2500) => {
+    window.clearTimeout(noticeTimer.current)
+    setNotice(message)
+    if (message && forMs) noticeTimer.current = window.setTimeout(() => setNotice(null), forMs)
+  }, [])
+
+  const copyImage = async () => {
+    try {
+      const blob = await slideToPng(slides[index])
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      showNotice('Slide copied as an image')
+    } catch (err) {
+      setError(`Could not copy the slide: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  const copyText = async (what: 'slide' | 'all') => {
+    const text = what === 'all' ? outline(slides) : [slideText(slides[index]), slides[index].notes].filter(Boolean).join('\n\n')
+    try {
+      await navigator.clipboard.writeText(text || '')
+      showNotice(text ? (what === 'all' ? 'Text of all slides copied' : 'Slide text copied') : 'This slide has no text')
+    } catch (err) {
+      setError(`Could not copy the text: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  // Printing / Save as PDF: render every slide, show them as pages, then open the print dialog.
+  const printDeck = async () => {
+    try {
+      const urls: string[] = []
+      for (let i = 0; i < slides.length; i++) {
+        showNotice(`Preparing pages ${i + 1}/${slides.length}…`, 0)
+        urls.push(await slideToJpegUrl(slides[i]))
+        await new Promise((r) => setTimeout(r, 0))
+      }
+      showNotice(null)
+      setPrintPages(urls)
+    } catch (err) {
+      showNotice(null)
+      setError(`Could not prepare the pages: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+  useEffect(() => {
+    if (!printPages) return
+    const finish = () => setPrintPages(null)
+    window.addEventListener('afterprint', finish, { once: true })
+    void (async () => {
+      const images = Array.from(document.querySelectorAll<HTMLImageElement>('.print-pages img'))
+      await Promise.all(images.map((img) => img.decode().catch(() => undefined)))
+      window.print()
+    })()
+    return () => window.removeEventListener('afterprint', finish)
+  }, [printPages])
+
   // Keyboard shortcuts
   useEffect(() => {
     if (status !== 'ready' || presenting) return
     const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); setSearchOpen(true); return }
       if (e.target instanceof HTMLInputElement) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'F5') { e.preventDefault(); setPresenting(true); return }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); go(index - 1) }
       else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); go(index + 1) }
@@ -270,7 +357,9 @@ export default function App() {
   }
 
   return (
-    <div className={cn('flex h-screen flex-col', dragging && 'bg-accent')}>
+    <>
+    {printPages && <PrintPages pages={printPages} />}
+    <div className={cn('flex h-screen flex-col print:hidden', dragging && 'bg-accent')}>
       {fileInputEl}
       {presenting && (
         <Presenter
@@ -289,6 +378,7 @@ export default function App() {
           </Button>
         </Tip>
         <span className="min-w-0 truncate text-sm font-medium">{filename}</span>
+        <span className="shrink-0 text-xs text-muted-foreground" role="status">{notice}</span>
         <div className="ml-auto flex items-center gap-1">
           <Tip label="Previous slide (←)">
             <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => go(index - 1)}>
@@ -321,6 +411,11 @@ export default function App() {
             </Button>
           </Tip>
           <Separator orientation="vertical" className="mx-2 h-5" />
+          <Tip label="Search slides (Ctrl+F)">
+            <Button variant={searchOpen ? 'secondary' : 'ghost'} size="sm" onClick={() => setSearchOpen((v) => !v)}>
+              Search
+            </Button>
+          </Tip>
           <Tip label="Start slideshow (F5)">
             <Button variant="outline" size="sm" onClick={() => setPresenting(true)}>
               Present
@@ -346,6 +441,19 @@ export default function App() {
                   <DropdownMenuSeparator />
                 </>
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>This slide</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => void copyImage()}>Copy as image</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void copyText('slide')}>Copy text</DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Whole presentation</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => void copyText('all')}>Copy text outline</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void printDeck()}>Print or save as PDF…</DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
               <DropdownMenuItem disabled={!!exporting} onClick={exportAll}>
                 {exporting ?? 'Export slides as PNGs'}
               </DropdownMenuItem>
@@ -353,6 +461,17 @@ export default function App() {
           </DropdownMenu>
         </div>
       </header>
+
+      {searchOpen && (
+        <SearchBar
+          query={query}
+          onQueryChange={setQuery}
+          hits={hits}
+          cursor={cursor}
+          onCursor={goToHit}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
 
       {error && (
         <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
@@ -366,7 +485,7 @@ export default function App() {
             <ScrollArea className="h-full">
               <div className="flex flex-col gap-1 p-2">
                 {slides.map((slide, i) => (
-                  <Thumbnail key={i} slide={slide} index={i} active={i === index} onSelect={() => go(i)} />
+                  <Thumbnail key={i} slide={slide} index={i} active={i === index} match={searchOpen && hitSlides.has(i)} onSelect={() => go(i)} />
                 ))}
               </div>
             </ScrollArea>
@@ -385,5 +504,6 @@ export default function App() {
         </main>
       </div>
     </div>
+    </>
   )
 }
