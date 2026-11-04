@@ -1,206 +1,119 @@
-// viewer/renderer/parse-theme.js
-// Resolves OOXML theme chain: slide → layout → master → theme
-// Extracts color scheme and font scheme into a ThemeContext object.
+// src/renderer/parse-theme.js
+// Resolves the OOXML theme chain: slide → layout → master → theme.
+// Produces a ThemeContext with the colour scheme (honouring the master's
+// colour map and any layout/slide overrides), the font scheme, and the
+// theme's fill / line style lists used by <p:style> references.
 //
 // export function parseThemeChain(slideXml, layoutXml, masterXml, themeXml) → ThemeContext
 
-'use strict';
+import { child, findFirst, parseXml } from './xml.js';
 
-// ─── XML Helpers ─────────────────────────────────────────────────────────────
-const parser = new DOMParser();
+// ─── Colour scheme ────────────────────────────────────────────────────────────
 
-function parseXml(xmlStr) {
-  if (!xmlStr) return null;
-  return parser.parseFromString(xmlStr, 'application/xml');
-}
-
-/**
- * Finds the first element matching a namespace-local-name pair,
- * searching across all namespace prefixes (robust to varied OOXML exports).
- * @param {Element|Document} root
- * @param {string} localName
- * @returns {Element|null}
- */
-function findFirst(root, localName) {
-  const els = (root.getElementsByTagNameNS
-    ? root.getElementsByTagName('*')
-    : []);
-  for (const el of els) {
-    if (el.localName === localName) return el;
-  }
-  return null;
-}
-
-function findAll(root, localName) {
-  const results = [];
-  const els = root.getElementsByTagName('*');
-  for (const el of els) {
-    if (el.localName === localName) results.push(el);
-  }
-  return results;
-}
-
-// ─── Color Resolution ─────────────────────────────────────────────────────────
-
-/**
- * Standard OOXML color scheme slot names → index in the theme clrScheme.
- */
-const COLOR_SCHEME_ORDER = [
+const COLOR_SLOTS = [
   'dk1', 'lt1', 'dk2', 'lt2',
   'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6',
   'hlink', 'folHlink',
 ];
 
-/**
- * Parses a <a:clrScheme> element and returns a map of slot → hex color string.
- * @param {Element} clrSchemeEl
- * @returns {Object<string, string>}
- */
+/** <a:clrScheme> → { slot: '#rrggbb' } */
 function parseColorScheme(clrSchemeEl) {
-  if (!clrSchemeEl) return {};
   const colors = {};
-  for (const slot of COLOR_SCHEME_ORDER) {
-    const slotEl = findFirst(clrSchemeEl, slot) || clrSchemeEl.querySelector(`*[*|name="${slot}"]`);
-    if (!slotEl) continue;
-    const srgbEl = findFirst(slotEl, 'srgbClr');
-    const sysEl  = findFirst(slotEl, 'sysClr');
-    if (srgbEl) {
-      colors[slot] = `#${srgbEl.getAttribute('val') || '000000'}`;
-    } else if (sysEl) {
-      // sysClr lastClr is the fallback hex value
-      colors[slot] = `#${sysEl.getAttribute('lastClr') || '000000'}`;
+  if (!clrSchemeEl) return colors;
+  for (const slot of COLOR_SLOTS) {
+    const slotEl = child(clrSchemeEl, slot);
+    const valueEl = slotEl?.firstElementChild;
+    if (!valueEl) continue;
+    if (valueEl.localName === 'srgbClr') {
+      colors[slot] = `#${valueEl.getAttribute('val') || '000000'}`;
+    } else if (valueEl.localName === 'sysClr') {
+      colors[slot] = `#${valueEl.getAttribute('lastClr') || '000000'}`;
     }
   }
   return colors;
 }
 
 /**
- * Parses a <a:fontScheme> element and returns { majorFont, minorFont }.
- * @param {Element} fontSchemeEl
- * @returns {{ majorFont: string, minorFont: string }}
+ * Colour map: how slide-level names (bg1, tx1, ...) map onto theme slots
+ * (lt1, dk1, ...). The master defines it; layouts and slides may override.
  */
-function parseFontScheme(fontSchemeEl) {
-  if (!fontSchemeEl) return { majorFont: 'Calibri', minorFont: 'Calibri' };
-
-  function getLatinFont(container) {
-    const latinEl = findFirst(container, 'latin');
-    return latinEl?.getAttribute('typeface') || 'Calibri';
-  }
-
-  const majorEl = findFirst(fontSchemeEl, 'majorFont');
-  const minorEl = findFirst(fontSchemeEl, 'minorFont');
-
-  return {
-    majorFont: majorEl ? getLatinFont(majorEl) : 'Calibri',
-    minorFont: minorEl ? getLatinFont(minorEl) : 'Calibri',
+function parseColorMap(masterDoc, layoutDoc, slideDoc) {
+  const map = {
+    bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2',
+    accent1: 'accent1', accent2: 'accent2', accent3: 'accent3',
+    accent4: 'accent4', accent5: 'accent5', accent6: 'accent6',
+    hlink: 'hlink', folHlink: 'folHlink',
   };
+  const apply = (el) => {
+    if (!el) return;
+    for (const attr of el.attributes) map[attr.name] = attr.value;
+  };
+  apply(findFirst(masterDoc, 'clrMap'));
+  for (const doc of [layoutDoc, slideDoc]) {
+    const ovr = findFirst(doc, 'clrMapOvr');
+    apply(child(ovr, 'overrideClrMapping'));
+  }
+  return map;
 }
 
-// ─── Background / Fill Resolution ─────────────────────────────────────────────
+// ─── Fonts ────────────────────────────────────────────────────────────────────
 
-/**
- * Resolves a background fill color for a slide document.
- * Checks: slide bg → layout bg → master bg → white fallback.
- * @param {Document|null} slideDoc
- * @param {Document|null} layoutDoc
- * @param {Document|null} masterDoc
- * @param {Object} colorScheme
- * @returns {string} CSS color string
- */
-function resolveBackground(slideDoc, layoutDoc, masterDoc, colorScheme) {
-  const docs = [slideDoc, layoutDoc, masterDoc];
-  for (const doc of docs) {
-    if (!doc) continue;
-    const bgEl = findFirst(doc, 'bg');
-    if (!bgEl) continue;
-    const solidFill = findFirst(bgEl, 'solidFill');
-    if (!solidFill) continue;
-
-    const srgb = findFirst(solidFill, 'srgbClr');
-    if (srgb) return `#${srgb.getAttribute('val') || 'ffffff'}`;
-
-    const schemeClr = findFirst(solidFill, 'schemeClr');
-    if (schemeClr) {
-      const slot = schemeClr.getAttribute('val');
-      if (colorScheme[slot]) return colorScheme[slot];
-    }
-  }
-  return '#ffffff';
+function parseFontScheme(fontSchemeEl) {
+  const latin = (container) =>
+    child(container, 'latin')?.getAttribute('typeface') || 'Calibri';
+  const major = child(fontSchemeEl, 'majorFont');
+  const minor = child(fontSchemeEl, 'minorFont');
+  return {
+    majorFont: major ? latin(major) : 'Calibri',
+    minorFont: minor ? latin(minor) : 'Calibri',
+  };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Builds a ThemeContext by parsing the full theme chain.
- *
- * ThemeContext is used downstream by parse-slide.js to resolve:
- *   - scheme color references (e.g. <a:schemeClr val="accent1"/>)
- *   - font theme references (e.g. <a:latin typeface="+mj-lt"/>)
- *   - slide background color
- *
- * @param {string|null} slideXml
- * @param {string|null} layoutXml
- * @param {string|null} masterXml
- * @param {string|null} themeXml
- * @returns {ThemeContext}
- *
  * @typedef {Object} ThemeContext
- * @property {Object<string, string>} colorScheme  - slot → #rrggbb
+ * @property {Object<string,string>} colorScheme   slot → #rrggbb
  * @property {string} majorFont
  * @property {string} minorFont
- * @property {string} background  - CSS color for slide background
- * @property {Function} resolveColor  - (val: string) => string
- * @property {Function} resolveFont   - (typeface: string) => string
+ * @property {{fills: Element[], lines: Element[], bgFills: Element[]}} fmt
+ *           the theme's fill, line and background-fill style lists
+ * @property {(val: string) => string} resolveColor  scheme name → #rrggbb
+ * @property {(typeface: string) => string} resolveFont  "+mn-lt" etc → family
  */
 export function parseThemeChain(slideXml, layoutXml, masterXml, themeXml) {
-  const slideDoc  = parseXml(slideXml);
+  const slideDoc = parseXml(slideXml);
   const layoutDoc = parseXml(layoutXml);
   const masterDoc = parseXml(masterXml);
-  const themeDoc  = parseXml(themeXml);
+  const themeDoc = parseXml(themeXml);
 
-  // Color scheme comes from the theme XML primarily; master as fallback
-  let colorScheme = {};
-  if (themeDoc) {
-    const clrSchemeEl = findFirst(themeDoc, 'clrScheme');
-    colorScheme = parseColorScheme(clrSchemeEl);
-  } else if (masterDoc) {
-    const clrSchemeEl = findFirst(masterDoc, 'clrScheme');
-    colorScheme = parseColorScheme(clrSchemeEl);
-  }
+  const colorScheme = parseColorScheme(findFirst(themeDoc || masterDoc, 'clrScheme'));
+  const colorMap = parseColorMap(masterDoc, layoutDoc, slideDoc);
 
-  // Font scheme
-  let fonts = { majorFont: 'Calibri', minorFont: 'Calibri' };
-  if (themeDoc) {
-    const fontSchemeEl = findFirst(themeDoc, 'fontScheme');
-    fonts = parseFontScheme(fontSchemeEl);
-  }
+  const fonts = themeDoc
+    ? parseFontScheme(findFirst(themeDoc, 'fontScheme'))
+    : { majorFont: 'Calibri', minorFont: 'Calibri' };
 
-  // Background
-  const background = resolveBackground(slideDoc, layoutDoc, masterDoc, colorScheme);
+  const fmtScheme = findFirst(themeDoc, 'fmtScheme');
+  const fmt = {
+    fills: listChildren(child(fmtScheme, 'fillStyleLst')),
+    lines: listChildren(child(fmtScheme, 'lnStyleLst')),
+    bgFills: listChildren(child(fmtScheme, 'bgFillStyleLst')),
+  };
 
-  /**
-   * Resolves a schemeClr val attribute or a raw hex sRGB value to a CSS color.
-   * @param {string} val - either a scheme slot name (e.g. "accent1") or a hex value
-   * @returns {string} CSS hex color
-   */
   function resolveColor(val) {
     if (!val) return '#000000';
+    const slot = colorMap[val] ?? val;
+    if (colorScheme[slot]) return colorScheme[slot];
     if (colorScheme[val]) return colorScheme[val];
-    // If it looks like a 6-char hex value, prefix with #
     if (/^[0-9a-fA-F]{6}$/.test(val)) return `#${val}`;
     return '#000000';
   }
 
-  /**
-   * Resolves a typeface attribute that might be a theme reference.
-   * "+mj-lt" → majorFont, "+mn-lt" → minorFont, else use as-is.
-   * @param {string} typeface
-   * @returns {string} actual font-family name
-   */
   function resolveFont(typeface) {
     if (!typeface) return fonts.minorFont;
-    if (typeface === '+mj-lt' || typeface === '+mj-ea' || typeface === '+mj-cs') return fonts.majorFont;
-    if (typeface === '+mn-lt' || typeface === '+mn-ea' || typeface === '+mn-cs') return fonts.minorFont;
+    if (typeface.startsWith('+mj-')) return fonts.majorFont;
+    if (typeface.startsWith('+mn-')) return fonts.minorFont;
     return typeface;
   }
 
@@ -208,8 +121,12 @@ export function parseThemeChain(slideXml, layoutXml, masterXml, themeXml) {
     colorScheme,
     majorFont: fonts.majorFont,
     minorFont: fonts.minorFont,
-    background,
+    fmt,
     resolveColor,
     resolveFont,
   };
+}
+
+function listChildren(el) {
+  return el ? Array.from(el.children) : [];
 }
