@@ -320,6 +320,12 @@ npm test -- path/to/decks    # also open every .pptx/.ppsx in a folder, or singl
 
 `npm test` runs the built viewer in a real Chrome (via `playwright-core`; set `CHROME_PATH` if Chrome is not in a standard location). It generates a deck that exercises inheritance, groups, crops, colour maps, tables, SmartArt, freeforms, shadows, charts, notes and animations; checks pixels on the canvas, search, the slideshow, the speaker view and recent files; and fails on any console error. With extra paths it opens each deck and checks that every slide draws. See [tests/README.md](tests/README.md) for the deck contents. Extension-only behaviour (downloads, the link menu, the permission prompt) is checked by hand in the built extension.
 
+## Releasing
+
+Store listing text, images and the release checklist live in [`store/`](store): [LISTING.md](store/LISTING.md) and [RELEASING.md](store/RELEASING.md). `npm run package` builds the upload zip.
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Third-party licences: [public/THIRD_PARTY_LICENSES.txt](public/THIRD_PARTY_LICENSES.txt).
+
+PowerPoint is a trademark of Microsoft Corporation. PPTX Viewer is an independent project and is not affiliated with or endorsed by Microsoft.
