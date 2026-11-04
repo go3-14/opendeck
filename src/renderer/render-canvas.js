@@ -159,12 +159,67 @@ function polygon(ctx, points) {
   ctx.closePath();
 }
 
+/** Builds a freeform (<a:custGeom>) path scaled into the box (x, y, w, h). */
+function buildCustomPath(ctx, paths, x, y, w, h) {
+  ctx.beginPath();
+  let anyFill = false;
+  for (const p of paths) {
+    const sx = p.w ? w / p.w : 1;
+    const sy = p.h ? h / p.h : 1;
+    let cx = 0; // current point, in the path's own units
+    let cy = 0;
+    let startX = 0;
+    let startY = 0;
+    for (const cmd of p.cmds) {
+      switch (cmd[0]) {
+        case 'M':
+          ctx.moveTo(x + cmd[1] * sx, y + cmd[2] * sy);
+          [, cx, cy] = cmd;
+          [startX, startY] = [cx, cy];
+          break;
+        case 'L':
+          ctx.lineTo(x + cmd[1] * sx, y + cmd[2] * sy);
+          [, cx, cy] = cmd;
+          break;
+        case 'C':
+          ctx.bezierCurveTo(x + cmd[1] * sx, y + cmd[2] * sy, x + cmd[3] * sx, y + cmd[4] * sy, x + cmd[5] * sx, y + cmd[6] * sy);
+          [cx, cy] = [cmd[5], cmd[6]];
+          break;
+        case 'Q':
+          ctx.quadraticCurveTo(x + cmd[1] * sx, y + cmd[2] * sy, x + cmd[3] * sx, y + cmd[4] * sy);
+          [cx, cy] = [cmd[3], cmd[4]];
+          break;
+        case 'A': {
+          // Arc continuing from the current point: it starts at angle stAng on an ellipse (wR, hR).
+          const [, wR, hR, st, sw] = cmd;
+          const start = (st * Math.PI) / 180;
+          const end = start + (sw * Math.PI) / 180;
+          const centerX = cx - wR * Math.cos(start);
+          const centerY = cy - hR * Math.sin(start);
+          ctx.ellipse(x + centerX * sx, y + centerY * sy, Math.abs(wR * sx), Math.abs(hR * sy), 0, start, end, sw < 0);
+          cx = centerX + wR * Math.cos(end);
+          cy = centerY + hR * Math.sin(end);
+          break;
+        }
+        case 'Z':
+          ctx.closePath();
+          [cx, cy] = [startX, startY];
+          break;
+        default: break;
+      }
+    }
+    if (p.fill) anyFill = true;
+  }
+  return { open: !anyFill };
+}
+
 /**
  * Builds the path for a preset geometry.
  * @returns {{ open: boolean, points?: number[][] }}  open = line-like (no fill);
  *          points = polyline used to orient arrowheads.
  */
-function buildPath(ctx, geometry, x, y, w, h, adj) {
+function buildPath(ctx, geometry, x, y, w, h, adj, custom) {
+  if (geometry === 'custom' && custom) return buildCustomPath(ctx, custom, x, y, w, h);
   ctx.beginPath();
   switch (geometry) {
     case 'line':
@@ -560,6 +615,15 @@ function drawTextBlock(ctx, text, x, y, w, h, K) {
 
 // ─── Shapes ───────────────────────────────────────────────────────────────────
 
+/** Sets canvas shadow state from a model shadow (restored by the caller's ctx.restore()). */
+function applyShadow(ctx, shadow, K, hasContent) {
+  if (!shadow || !hasContent) return;
+  ctx.shadowColor = shadow.color;
+  ctx.shadowBlur = shadow.blur * K;
+  ctx.shadowOffsetX = shadow.dx * K;
+  ctx.shadowOffsetY = shadow.dy * K;
+}
+
 function drawShape(ctx, s, K) {
   const w = s.w * K;
   const h = s.h * K;
@@ -572,7 +636,8 @@ function drawShape(ctx, s, K) {
   if (s.flipH) ctx.scale(-1, 1);
   if (s.flipV) ctx.scale(1, -1);
 
-  const path = buildPath(ctx, s.geometry, -w / 2, -h / 2, w, h, s.adj);
+  const path = buildPath(ctx, s.geometry, -w / 2, -h / 2, w, h, s.adj, s.custom);
+  applyShadow(ctx, s.shadow, K, (!path.open && s.fill?.type !== 'none') || !!s.line);
   if (!path.open) {
     const style = fillStyleFor(ctx, s.fill, -w / 2, -h / 2, w, h);
     if (style) {
@@ -585,7 +650,7 @@ function drawShape(ctx, s, K) {
         ctx.clip();
         blit(ctx, img, s.fill.crop, -w / 2, -h / 2, w, h);
         ctx.restore();
-        buildPath(ctx, s.geometry, -w / 2, -h / 2, w, h, s.adj);
+        buildPath(ctx, s.geometry, -w / 2, -h / 2, w, h, s.adj, s.custom);
       }
     }
   }
@@ -612,7 +677,9 @@ function drawImageShape(ctx, s, K) {
     buildPath(ctx, s.geometry, -w / 2, -h / 2, w, h, s.adj);
     ctx.clip();
   }
+  applyShadow(ctx, s.shadow, K, true);
   blit(ctx, img, s.crop, -w / 2, -h / 2, w, h);
+  ctx.shadowColor = 'transparent'; // the outline should not cast its own shadow
 
   if (s.line) {
     buildPath(ctx, s.geometry || 'rect', -w / 2, -h / 2, w, h, s.adj);

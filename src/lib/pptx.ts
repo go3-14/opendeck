@@ -16,7 +16,7 @@ export async function loadPptx(
   onProgress?.('Reading file…')
   const {
     slideXmls, layoutXmls, masterXmls, themeXml, themeXmls, media,
-    slideRels, imageRels, presentationXml, slidePaths, layoutPaths, masterPaths,
+    slideRels, imageRels, diagrams, tableStylesXml, presentationXml, slidePaths, layoutPaths, masterPaths,
   } = await unzipPptx(bytes)
 
   if (!slideXmls.length) throw new Error('No slides found in this file.')
@@ -41,6 +41,8 @@ export async function loadPptx(
         layoutImageRels: imageRels.get(layoutPaths[layoutIdx >= 0 ? layoutIdx : 0]) || new Map(),
         masterImageRels: imageRels.get(masterPaths[masterIdx >= 0 ? masterIdx : 0]) || new Map(),
         slideNumber: i + 1,
+        diagrams: diagrams.get(slidePaths[i]),
+        tableStylesXml,
       }),
     )
   }

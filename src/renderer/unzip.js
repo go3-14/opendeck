@@ -99,6 +99,8 @@ async function orderedSlidePaths(zip, existingSlidePaths) {
  *   media: Map<string, () => Promise<Blob>>,
  *   slideRels: Map<string, {layoutPath: string, masterPath: string}>,
  *   imageRels: Map<string, Map<string, string>>,
+ *   diagrams: Map<string, Map<string, string>>,
+ *   tableStylesXml: string|null,
  *   presentationXml: string|null,
  *   slidePaths: string[],
  *   layoutPaths: string[],
@@ -107,6 +109,9 @@ async function orderedSlidePaths(zip, existingSlidePaths) {
  *   - themeXml: first theme (fallback); themeXmls: theme of each master, by master path
  *   - media: lazy loaders keyed by zip path; each reads and caches its Blob on first call
  *   - imageRels: rId → media path for every slide, layout and master
+ *   - diagrams: per slide, the SmartArt data-model rId → the pre-drawn fallback
+ *     drawing XML PowerPoint stores next to it (what we render instead of the badge)
+ *   - tableStylesXml: ppt/tableStyles.xml, if present
  */
 export async function unzipPptx(arrayBuffer) {
   const zip = await JSZip.loadAsync(arrayBuffer);
@@ -160,6 +165,22 @@ export async function unzipPptx(arrayBuffer) {
     imageRels.set(part, images);
   }
 
+  // ── SmartArt: PowerPoint saves a pre-rendered drawing for every diagram ─────
+  const diagrams = new Map();
+  for (const slidePath of slidePaths) {
+    const rels = relsByPart.get(slidePath) || [];
+    const byDataModel = new Map();
+    for (const dm of rels.filter((r) => r.type.endsWith('/diagramData'))) {
+      if (!zip.file(dm.target)) continue;
+      // The data model names the slide relationship that holds its drawing.
+      const link = (await text(dm.target)).match(/dataModelExt[^>]*relId="([^"]+)"/);
+      const drawing = link && rels.find((r) => r.id === link[1] && r.type.endsWith('/diagramDrawing'));
+      if (drawing && zip.file(drawing.target)) byDataModel.set(dm.id, await text(drawing.target));
+    }
+    if (byDataModel.size) diagrams.set(slidePath, byDataModel);
+  }
+  const tableStylesXml = zip.file('ppt/tableStyles.xml') ? await text('ppt/tableStyles.xml') : null;
+
   // ── Media: loaded lazily, only when a shape actually draws it ──────────────
   const media = new Map();
   for (const p of allFiles) {
@@ -174,6 +195,6 @@ export async function unzipPptx(arrayBuffer) {
 
   return {
     slideXmls, layoutXmls, masterXmls, themeXml, themeXmls, media,
-    slideRels, imageRels, presentationXml, slidePaths, layoutPaths, masterPaths,
+    slideRels, imageRels, diagrams, tableStylesXml, presentationXml, slidePaths, layoutPaths, masterPaths,
   };
 }

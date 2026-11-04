@@ -365,7 +365,7 @@ function readBodyPr(elements, defaults) {
  * @param lstEls     list-style sources (txStyles entry, <a:lstStyle>s), low → high
  * @param defaultColor  text colour used when nothing in the chain sets one
  */
-function buildText(txBodyEl, pc, { bodyPrEls = [], lstEls = [], defaultColor, insets }) {
+function buildText(txBodyEl, pc, { bodyPrEls = [], lstEls = [], defaultColor, defaultBold, insets }) {
   const bodyPr = readBodyPr(bodyPrEls, insets);
   const baseColor = defaultColor || pc.theme.resolveColor('tx1');
   const paragraphs = [];
@@ -377,7 +377,7 @@ function buildText(txBodyEl, pc, { bodyPrEls = [], lstEls = [], defaultColor, in
     if (pPr) props = mergeProps(props, readPProps(pPr, pc));
 
     const base = {
-      sz: DEFAULT_FONT_PT, b: false, i: false, u: false, strike: false, baseline: 0,
+      sz: DEFAULT_FONT_PT, b: defaultBold ?? false, i: false, u: false, strike: false, baseline: 0,
       color: baseColor, font: pc.theme.minorFont, ...props.rPr,
     };
 
@@ -428,13 +428,67 @@ function buildText(txBodyEl, pc, { bodyPrEls = [], lstEls = [], defaultColor, in
 
 // ─── Shapes ───────────────────────────────────────────────────────────────────
 
+/** First <a:outerShdw> found in the given spPr elements (highest priority last). */
+function parseShadow(spPrs, pc) {
+  for (const spPr of [...spPrs].reverse()) {
+    const sh = child(child(spPr, 'effectLst'), 'outerShdw');
+    if (!sh) continue;
+    const dist = emu(sh.getAttribute('dist'));
+    const dir = (intAttr(sh, 'dir', 0) / 60000) * (Math.PI / 180);
+    const color = resolveColorEl(sh.firstElementChild, pc.theme);
+    if (!color) continue;
+    return { color, blur: emu(sh.getAttribute('blurRad')), dx: dist * Math.cos(dir), dy: dist * Math.sin(dir) };
+  }
+  return null;
+}
+
+/** <a:custGeom> → list of paths in their own coordinate space, or null if unusable. */
+function parseCustGeom(custGeom) {
+  const paths = [];
+  for (const p of children(child(custGeom, 'pathLst'), 'path')) {
+    const cmds = [];
+    let valid = true;
+    const pt = (el) => {
+      const x = parseInt(el?.getAttribute('x'), 10);
+      const y = parseInt(el?.getAttribute('y'), 10);
+      if (Number.isNaN(x) || Number.isNaN(y)) valid = false; // guide-name formulas are not supported
+      return [x || 0, y || 0];
+    };
+    for (const c of p.children) {
+      switch (c.localName) {
+        case 'moveTo': cmds.push(['M', ...pt(child(c, 'pt'))]); break;
+        case 'lnTo': cmds.push(['L', ...pt(child(c, 'pt'))]); break;
+        case 'cubicBezTo': { const [a, b, d] = children(c, 'pt').map(pt); cmds.push(['C', ...a, ...b, ...d]); break; }
+        case 'quadBezTo': { const [a, b] = children(c, 'pt').map(pt); cmds.push(['Q', ...a, ...b]); break; }
+        case 'arcTo':
+          cmds.push(['A', intAttr(c, 'wR'), intAttr(c, 'hR'), intAttr(c, 'stAng') / 60000, intAttr(c, 'swAng') / 60000]);
+          break;
+        case 'close': cmds.push(['Z']); break;
+        default: break;
+      }
+    }
+    if (valid && cmds.length) {
+      paths.push({
+        w: intAttr(p, 'w', 0), h: intAttr(p, 'h', 0),
+        fill: p.getAttribute('fill') !== 'none', cmds,
+      });
+    }
+  }
+  return paths.length ? paths : null;
+}
+
 function parseGeometry(spPrEl) {
+  const cust = child(spPrEl, 'custGeom');
+  if (cust) {
+    const custom = parseCustGeom(cust);
+    if (custom) return { geometry: 'custom', adj: undefined, custom };
+  }
   const prst = child(spPrEl, 'prstGeom');
-  if (!prst) return { geometry: 'rect', adj: undefined };
+  if (!prst) return { geometry: 'rect', adj: undefined, custom: null };
   // First adjust value, as a fraction of 100000 (used by roundRect radius).
   const gd = findFirst(child(prst, 'avLst'), 'gd');
   const m = gd?.getAttribute('fmla')?.match(/val\s+(-?\d+)/);
-  return { geometry: prst.getAttribute('prst') || 'rect', adj: m ? parseInt(m[1], 10) / 100000 : undefined };
+  return { geometry: prst.getAttribute('prst') || 'rect', adj: m ? parseInt(m[1], 10) / 100000 : undefined, custom: null };
 }
 
 /** <p:sp> and <p:cxnSp>. */
@@ -459,8 +513,10 @@ function parseSp(el, pc) {
   let linePartial = { ...(style?.line || {}) };
   for (const spPr of spPrs) linePartial = { ...linePartial, ...parseLn(child(spPr, 'ln'), pc) };
 
-  const geomSource = high.map((e) => child(e, 'spPr')).find((s) => child(s, 'prstGeom'));
-  const { geometry, adj } = parseGeometry(geomSource);
+  const geomSource = high.map((e) => child(e, 'spPr')).find((sp) => child(sp, 'prstGeom') || child(sp, 'custGeom'));
+  const { geometry, adj, custom } = parseGeometry(geomSource);
+  // Paths without their own coordinate size use the shape's size in EMU.
+  const customPaths = custom?.map((p) => ({ ...p, w: p.w || xf.w * EMU_PER_PT, h: p.h || xf.h * EMU_PER_PT })) || null;
 
   let text = null;
   const txBody = child(el, 'txBody');
@@ -476,7 +532,8 @@ function parseSp(el, pc) {
   return {
     type: 'shape',
     x: xf.x, y: xf.y, w: xf.w, h: xf.h, rot: xf.rot, flipH: xf.flipH, flipV: xf.flipV,
-    geometry, adj, fill, line: finishLine(linePartial), text,
+    geometry, adj, custom: customPaths, fill, line: finishLine(linePartial), text,
+    shadow: parseShadow(spPrs, pc),
   };
 }
 
@@ -496,6 +553,7 @@ function parsePic(el, pc) {
     x: xf.x, y: xf.y, w: xf.w, h: xf.h, rot: xf.rot, flipH: xf.flipH, flipV: xf.flipV,
     loadBlob, crop: parseSrcRect(blipFill), geometry, adj,
     line: finishLine(parseLn(path(el, 'spPr', 'ln'), pc)),
+    shadow: parseShadow([child(el, 'spPr')], pc),
   };
 }
 
@@ -510,9 +568,124 @@ function parseGraphicFrame(el, pc) {
   const graphicData = path(el, 'graphic', 'graphicData');
   const uri = graphicData?.getAttribute('uri') || '';
   if (uri.includes('table')) return parseTable(graphicData, pc, box);
+  if (uri.includes('diagram')) {
+    const dataModelId = findFirst(graphicData, 'relIds')?.getAttribute('r:dm');
+    const drawingXml = dataModelId ? pc.diagrams?.get(dataModelId) : null;
+    if (drawingXml) return parseDiagramDrawing(drawingXml, pc, box);
+  }
 
   const label = uri.includes('chart') ? 'Chart' : uri.includes('diagram') ? 'SmartArt' : 'Embedded object';
   return { type: 'unsupported', label, ...box };
+}
+
+/**
+ * SmartArt: PowerPoint stores a pre-drawn copy of each diagram as ordinary
+ * shapes (positions relative to the frame). We draw that copy.
+ */
+function parseDiagramDrawing(drawingXml, pc, box) {
+  const tree = findFirst(parseXml(drawingXml), 'spTree');
+  // Not a slide context: no placeholder lookup and no ids (they would clash with the slide's).
+  const diagramPc = { ...pc, placeholders: null };
+  const shapes = [];
+  for (const el of tree?.children || []) shapes.push(...parseShapeList(el, diagramPc));
+  const shift = (list) => {
+    for (const sh of list) {
+      sh.x += box.x;
+      sh.y += box.y;
+      if (sh.type === 'group') shift(sh.shapes);
+    }
+  };
+  shift(shapes);
+  return { type: 'group', x: box.x, y: box.y, w: box.w, h: box.h, rot: 0, flipH: false, flipV: false, shapes };
+}
+
+// ─── Table styles ─────────────────────────────────────────────────────────────
+
+const STYLE_PARTS = ['wholeTbl', 'band1H', 'band2H', 'band1V', 'band2V', 'lastCol', 'firstCol', 'lastRow', 'firstRow'];
+const BORDER_TAGS = [['left', 'l'], ['right', 'r'], ['top', 't'], ['bottom', 'b'], ['insideH', 'insideH'], ['insideV', 'insideV']];
+
+/** Looks up a table style in ppt/tableStyles.xml; returns { part: {fill, color, bold, borders} } or null. */
+function readTableStyle(pc, styleId) {
+  const doc = parseXml(pc.tableStylesXml);
+  if (!doc || !styleId) return null;
+  const styleEl = Array.from(doc.getElementsByTagName('*'))
+    .find((e) => e.localName === 'tblStyle' && e.getAttribute('styleId') === styleId);
+  if (!styleEl) return null;
+
+  const out = {};
+  for (const part of STYLE_PARTS) {
+    const partEl = child(styleEl, part);
+    if (!partEl) continue;
+    const o = {};
+
+    const txStyle = child(partEl, 'tcTxStyle');
+    if (txStyle) {
+      if (txStyle.hasAttribute('b')) o.bold = txStyle.getAttribute('b') === 'on';
+      for (const c of txStyle.children) {
+        const color = resolveColorEl(c.localName === 'fontRef' ? c.firstElementChild : c, pc.theme);
+        if (color) o.color = color;
+      }
+    }
+
+    const tcStyle = child(partEl, 'tcStyle');
+    if (tcStyle) {
+      const fill = fillChild(child(tcStyle, 'fill'));
+      if (fill) o.fill = parseFillEl(fill, pc);
+      const bdr = child(tcStyle, 'tcBdr');
+      if (bdr) {
+        o.borders = {};
+        for (const [tag, key] of BORDER_TAGS) {
+          const b = child(bdr, tag);
+          if (!b) continue;
+          const lnRef = child(b, 'lnRef');
+          if (lnRef) {
+            const idx = intAttr(lnRef, 'idx', 0);
+            const color = resolveColorEl(lnRef.firstElementChild, pc.theme);
+            const lnEl = idx > 0 ? pc.theme.fmt.lines[idx - 1] : null;
+            o.borders[key] = lnEl ? finishLine(parseLn(lnEl, pc, color)) : null;
+          } else {
+            o.borders[key] = finishLine(parseLn(child(b, 'ln'), pc));
+          }
+        }
+      }
+    }
+    out[part] = o;
+  }
+  return out;
+}
+
+/** Combines a table style's layers for one cell (later layers win). */
+function styleForCell(style, flags, ri, ci, nRows, nCols) {
+  const layers = [style.wholeTbl];
+  if (flags.bandRow) {
+    const i = ri - (flags.firstRow ? 1 : 0);
+    if (i >= 0) layers.push(i % 2 === 0 ? style.band1H : style.band2H);
+  }
+  if (flags.bandCol) {
+    const i = ci - (flags.firstCol ? 1 : 0);
+    if (i >= 0) layers.push(i % 2 === 0 ? style.band1V : style.band2V);
+  }
+  if (flags.lastCol && ci === nCols - 1) layers.push(style.lastCol);
+  if (flags.firstCol && ci === 0) layers.push(style.firstCol);
+  if (flags.lastRow && ri === nRows - 1) layers.push(style.lastRow);
+  if (flags.firstRow && ri === 0) layers.push(style.firstRow);
+
+  const out = {};
+  const edges = {};
+  for (const layer of layers) {
+    if (!layer) continue;
+    if (layer.fill) out.fill = layer.fill;
+    if (layer.color) out.color = layer.color;
+    if (layer.bold !== undefined) out.bold = layer.bold;
+    Object.assign(edges, layer.borders);
+  }
+  out.borders = {
+    t: ri === 0 ? edges.t : edges.insideH,
+    b: ri === nRows - 1 ? edges.b : edges.insideH,
+    l: ci === 0 ? edges.l : edges.insideV,
+    r: ci === nCols - 1 ? edges.r : edges.insideV,
+  };
+  return out;
 }
 
 function parseTable(graphicData, pc, box) {
@@ -520,9 +693,19 @@ function parseTable(graphicData, pc, box) {
   if (!tbl) return { type: 'unsupported', label: 'Table', ...box };
 
   const colWidths = children(child(tbl, 'tblGrid'), 'gridCol').map((gc) => emu(gc.getAttribute('w')));
-  const rows = children(tbl, 'tr').map((tr) => ({
+  const trs = children(tbl, 'tr');
+  const tblPr = child(tbl, 'tblPr');
+  const flag = (n) => tblPr?.getAttribute(n) === '1';
+  const flags = {
+    firstRow: flag('firstRow'), lastRow: flag('lastRow'), firstCol: flag('firstCol'),
+    lastCol: flag('lastCol'), bandRow: flag('bandRow'), bandCol: flag('bandCol'),
+  };
+  const style = readTableStyle(pc, child(tblPr, 'tableStyleId')?.textContent?.trim());
+
+  const rows = trs.map((tr, ri) => ({
     h: emu(tr.getAttribute('h')),
-    cells: children(tr, 'tc').map((tc) => {
+    cells: children(tr, 'tc').map((tc, ci) => {
+      const styled = style ? styleForCell(style, flags, ri, ci, trs.length, colWidths.length) : null;
       const tcPr = child(tc, 'tcPr');
       const txBody = child(tc, 'txBody');
       const insets = {
@@ -532,15 +715,19 @@ function parseTable(graphicData, pc, box) {
         b: tcPr?.hasAttribute('marB') ? emu(tcPr.getAttribute('marB')) : 3.6,
         anchor: tcPr?.getAttribute('anchor') || 't',
       };
-      const borders = {};
+      const explicit = {};
       for (const [tag, key] of [['lnL', 'l'], ['lnR', 'r'], ['lnT', 't'], ['lnB', 'b']]) {
         const ln = child(tcPr, tag);
-        if (ln) borders[key] = finishLine(parseLn(ln, pc));
+        if (ln) explicit[key] = finishLine(parseLn(ln, pc));
       }
+      // Explicit cell borders win over the table style; with neither, the renderer draws hairlines.
+      const hasExplicit = Object.keys(explicit).length > 0;
+      const borders = styled ? { ...styled.borders, ...explicit } : hasExplicit ? explicit : null;
+      const explicitFill = fillChild(tcPr);
       return {
-        text: txBody ? buildText(txBody, pc, { insets }) : null,
-        fill: parseFillEl(fillChild(tcPr), pc),
-        borders: Object.keys(borders).length ? borders : null,
+        text: txBody ? buildText(txBody, pc, { insets, defaultColor: styled?.color, defaultBold: styled?.bold }) : null,
+        fill: explicitFill ? parseFillEl(explicitFill, pc) : styled?.fill || NONE,
+        borders,
         gridSpan: intAttr(tc, 'gridSpan', 1),
         rowSpan: intAttr(tc, 'rowSpan', 1),
         hMerge: tc.getAttribute('hMerge') === '1',
@@ -735,6 +922,8 @@ export function parseSlideSize(presentationXml) {
  * @param {Map<string,string>} [inherit.layoutImageRels]
  * @param {Map<string,string>} [inherit.masterImageRels]
  * @param {number} [inherit.slideNumber]    1-based, for slide-number fields
+ * @param {Map<string,string>} [inherit.diagrams]  SmartArt data-model rId → fallback drawing XML
+ * @param {string|null} [inherit.tableStylesXml]   ppt/tableStyles.xml
  */
 export function parseSlide(slideXml, themeCtx, media, slideSize, slideImageRels = new Map(), inherit = {}) {
   const width = slideSize?.width ?? DEFAULT_WIDTH_PT;
@@ -755,6 +944,7 @@ export function parseSlide(slideXml, themeCtx, media, slideSize, slideImageRels 
   const masterPc = { ...layoutPc, rels: inherit.masterImageRels || new Map() };
   const slidePc = {
     theme: themeCtx, media, rels: slideImageRels, slideNumber,
+    diagrams: inherit.diagrams, tableStylesXml: inherit.tableStylesXml,
     placeholders: {
       layoutList: indexPlaceholders(layoutDoc),
       masterList: indexPlaceholders(masterDoc),
