@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import Presenter from '@/components/Presenter'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -83,6 +84,7 @@ export default function App() {
   const [zoom, setZoom] = useState(1)
   const [exporting, setExporting] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [presenting, setPresenting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const openBytes = useCallback(async (bytes: ArrayBuffer, name: string) => {
@@ -160,9 +162,10 @@ export default function App() {
 
   // Keyboard shortcuts
   useEffect(() => {
-    if (status !== 'ready') return
+    if (status !== 'ready' || presenting) return
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
+      if (e.key === 'F5') { e.preventDefault(); setPresenting(true); return }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); go(index - 1) }
       else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); go(index + 1) }
       else if (e.key === 'Home') { e.preventDefault(); go(0) }
@@ -172,7 +175,7 @@ export default function App() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [status, index, slides.length, go, changeZoom])
+  }, [status, presenting, index, slides.length, go, changeZoom])
 
   // Drag and drop anywhere on the page
   useEffect(() => {
@@ -246,6 +249,16 @@ export default function App() {
   return (
     <div className={cn('flex h-screen flex-col', dragging && 'bg-accent')}>
       {fileInputEl}
+      {presenting && (
+        <Presenter
+          slides={slides}
+          startIndex={index}
+          onExit={(i) => {
+            setIndex(i)
+            setPresenting(false)
+          }}
+        />
+      )}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <span className="min-w-0 truncate text-sm font-medium">{filename}</span>
         <div className="ml-auto flex items-center gap-1">
@@ -267,6 +280,9 @@ export default function App() {
             +
           </Button>
           <Separator orientation="vertical" className="mx-2 h-5" />
+          <Button variant="outline" size="sm" onClick={() => setPresenting(true)}>
+            Present
+          </Button>
           <Button variant="outline" size="sm" disabled={!!exporting} onClick={exportAll}>
             {exporting ?? 'Export PNGs'}
           </Button>
