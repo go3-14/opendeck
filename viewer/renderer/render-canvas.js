@@ -297,8 +297,22 @@ async function loadBlobImage(blob) {
   const url = URL.createObjectURL(blob);
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => { _imageCache.set(blob, img); resolve(img); };
-    img.onerror = reject;
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      URL.revokeObjectURL(url);
+      callback(value);
+    };
+    const timeoutId = setTimeout(() => {
+      finish(reject, new Error('Image decode timed out'));
+    }, 10000);
+    img.onload = () => {
+      _imageCache.set(blob, img);
+      finish(resolve, img);
+    };
+    img.onerror = () => finish(reject, new Error('Image decode failed'));
     img.src = url;
   });
 }
@@ -410,11 +424,9 @@ async function drawShapeDispatch(ctx, shape, scale) {
   if (!shape) return;
   switch (shape.type) {
     case 'text':
-      // Text-only shapes (text boxes)
-      drawText(ctx, shape, scale);
-      break;
-
     case 'shape':
+      // drawShape paints fill/outline first, then any text on top, so shapes
+      // that contain text keep their background.
       drawShape(ctx, shape, scale);
       break;
 

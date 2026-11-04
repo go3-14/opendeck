@@ -21,6 +21,11 @@ function sortByIndex(names) {
   });
 }
 
+// Only decode media types that the canvas renderer can display. PPTX files
+// commonly contain large video/audio parts under ppt/media; reading those into
+// memory made the viewer appear to hang even though they are unsupported.
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp']);
+
 /**
  * Reads a zip entry as a UTF-8 string (XML).
  * @param {Object} entry - JSZip file entry
@@ -119,6 +124,66 @@ async function resolveSlideRels(zip, slidePaths) {
   return relsMap;
 }
 
+/** Builds a Map<slidePath, Map<rId, mediaPath>> for embedded raster images. */
+async function resolveImageRels(zip, slidePaths) {
+  const result = new Map();
+  const imageType = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+
+  for (const slidePath of slidePaths) {
+    const dir = slidePath.substring(0, slidePath.lastIndexOf('/'));
+    const base = slidePath.substring(slidePath.lastIndexOf('/') + 1);
+    const relsEntry = zip.file(`${dir}/_rels/${base}.rels`);
+    if (!relsEntry) continue;
+
+    const relsDoc = new DOMParser().parseFromString(await readXml(relsEntry), 'application/xml');
+    const slideImages = new Map();
+    for (const rel of relsDoc.querySelectorAll('Relationship')) {
+      if ((rel.getAttribute('Type') || '') !== imageType) continue;
+      const target = rel.getAttribute('Target') || '';
+      const path = new URL(target, `https://x/${slidePath}`).pathname.slice(1);
+      slideImages.set(rel.getAttribute('Id'), path);
+    }
+    result.set(slidePath, slideImages);
+  }
+  return result;
+}
+
+/**
+ * Returns slide paths in presentation order using <p:sldIdLst> and
+ * ppt/_rels/presentation.xml.rels. Returns null if it can't be determined.
+ */
+async function orderedSlidePaths(zip, existingSlidePaths) {
+  const presEntry = zip.file('ppt/presentation.xml');
+  const relsEntry = zip.file('ppt/_rels/presentation.xml.rels');
+  if (!presEntry || !relsEntry) return null;
+
+  const parser = new DOMParser();
+  const presDoc = parser.parseFromString(await readXml(presEntry), 'application/xml');
+  const relsDoc = parser.parseFromString(await readXml(relsEntry), 'application/xml');
+
+  const targets = new Map(); // rId → zip path
+  for (const rel of relsDoc.querySelectorAll('Relationship')) {
+    if (!(rel.getAttribute('Type') || '').endsWith('/slide')) continue;
+    const target = rel.getAttribute('Target') || '';
+    // Targets are relative to ppt/ (or absolute when they start with "/").
+    const path = target.startsWith('/')
+      ? target.slice(1)
+      : new URL(target, 'https://x/ppt/presentation.xml').pathname.slice(1);
+    targets.set(rel.getAttribute('Id'), path);
+  }
+
+  const existing = new Set(existingSlidePaths);
+  const ordered = [];
+  for (const el of presDoc.getElementsByTagName('*')) {
+    if (el.localName !== 'sldId') continue;
+    const rId = el.getAttribute('r:id') ||
+      el.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    const path = targets.get(rId);
+    if (path && existing.has(path)) ordered.push(path);
+  }
+  return ordered.length ? ordered : null;
+}
+
 /**
  * Main entry point. Extracts all relevant parts of a PPTX (which is a ZIP).
  *
@@ -129,7 +194,9 @@ async function resolveSlideRels(zip, slidePaths) {
  *   masterXmls: string[],
  *   themeXml: string|null,
  *   media: Map<string, Blob>,
- *   slideRels: Map<string, {layoutPath:string, masterPath:string}>
+ *   slideRels: Map<string, {layoutPath:string, masterPath:string}>,
+ *   imageRels: Map<string, Map<string, string>>,
+ *   presentationXml: string|null
  * }>}
  */
 export async function unzipPptx(arrayBuffer) {
@@ -138,9 +205,11 @@ export async function unzipPptx(arrayBuffer) {
   // ── Discover slide XML paths ──────────────────────────────────────────────
   const allFiles = Object.keys(zip.files);
 
-  const slidePaths = sortByIndex(
+  const fileSortedSlides = sortByIndex(
     allFiles.filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p))
   );
+  // Prefer true presentation order (sldIdLst); fall back to filename order.
+  const slidePaths = (await orderedSlidePaths(zip, fileSortedSlides)) || fileSortedSlides;
   const layoutPaths = sortByIndex(
     allFiles.filter(p => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(p))
   );
@@ -152,16 +221,22 @@ export async function unzipPptx(arrayBuffer) {
   const themePath = allFiles.find(p => /^ppt\/theme\/theme\d+\.xml$/.test(p)) || null;
 
   // ── Read all XMLs in parallel ─────────────────────────────────────────────
-  const [slideXmls, layoutXmls, masterXmls, themeXml, slideRels] = await Promise.all([
+  const [slideXmls, layoutXmls, masterXmls, themeXml, presentationXml, slideRels, imageRels] = await Promise.all([
     Promise.all(slidePaths.map(p => readXml(zip.file(p)))),
     Promise.all(layoutPaths.map(p => readXml(zip.file(p)))),
     Promise.all(masterPaths.map(p => readXml(zip.file(p)))),
     themePath ? readXml(zip.file(themePath)) : Promise.resolve(null),
+    zip.file('ppt/presentation.xml') ? readXml(zip.file('ppt/presentation.xml')) : Promise.resolve(null),
     resolveSlideRels(zip, slidePaths),
+    resolveImageRels(zip, slidePaths),
   ]);
 
   // ── Read media files ──────────────────────────────────────────────────────
-  const mediaPaths = allFiles.filter(p => p.startsWith('ppt/media/'));
+  const mediaPaths = allFiles.filter(p => {
+    if (!p.startsWith('ppt/media/')) return false;
+    const ext = p.split('.').pop()?.toLowerCase();
+    return IMAGE_EXTENSIONS.has(ext);
+  });
   const mediaEntries = await Promise.all(
     mediaPaths.map(async p => [p, await readBlob(zip.file(p), p)])
   );
@@ -174,6 +249,8 @@ export async function unzipPptx(arrayBuffer) {
     themeXml,    // string|null — first theme XML
     media,       // Map<zipPath, Blob>
     slideRels,   // Map<slidePath, {layoutPath, masterPath}>
+    imageRels,   // Map<slidePath, Map<rId, mediaPath>>
+    presentationXml,
     slidePaths,  // string[] — for cross-referencing with slideRels
     layoutPaths,
     masterPaths,
