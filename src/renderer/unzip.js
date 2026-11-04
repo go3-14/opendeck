@@ -1,11 +1,12 @@
 // viewer/renderer/unzip.js
 // Wraps JSZip to extract all relevant PPTX parts into a structured map.
-// JSZip is loaded as a global from ../lib/jszip.min.js (script tag, not module).
 //
 // export async function unzipPptx(arrayBuffer)
 //   → { slideXmls, layoutXmls, masterXmls, themeXml, media }
 
 'use strict';
+
+import JSZip from 'jszip';
 
 /**
  * Sorts slide/layout/master filenames by numeric index so they are in
@@ -196,7 +197,10 @@ async function orderedSlidePaths(zip, existingSlidePaths) {
  *   media: Map<string, Blob>,
  *   slideRels: Map<string, {layoutPath:string, masterPath:string}>,
  *   imageRels: Map<string, Map<string, string>>,
- *   presentationXml: string|null
+ *   presentationXml: string|null,
+ *   slidePaths: string[],
+ *   layoutPaths: string[],
+ *   masterPaths: string[]
  * }>}
  */
 export async function unzipPptx(arrayBuffer) {

@@ -3,7 +3,7 @@
 'use strict';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const VIEWER_URL = chrome.runtime.getURL('viewer/viewer.html');
+const VIEWER_URL = chrome.runtime.getURL('viewer.html');
 const IDB_DB_NAME = 'pptx_viewer';
 const IDB_STORE_NAME = 'pptx_store';
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
