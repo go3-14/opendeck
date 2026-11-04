@@ -10,6 +10,7 @@ pnpm-lock.yaml
 
 # Build output
 dist/
+release/
 build/
 out/
 
