@@ -4,12 +4,17 @@ import Presenter from '@/components/Presenter'
 import { SlideCanvas, Thumbnail } from '@/components/SlideCanvas'
 import { Tip } from '@/components/Tip'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { ACCEPT, formatSize, isPresentationFile, isSlideshowFile } from '@/lib/files'
 import { consumeHandoff } from '@/lib/idb'
 import { prefetchAround } from '@/lib/prefetch'
 import { exportSlidesAsZip, loadPptx, type Slide } from '@/lib/pptx'
+import { addRecent, clearRecent, listRecent, loadRecent, type RecentEntry } from '@/lib/recent'
 import { cn } from '@/lib/utils'
 
 const MIN_ZOOM = 0.25
@@ -34,6 +39,12 @@ export default function App() {
   const [dragging, setDragging] = useState(false)
   const [presenting, setPresenting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [recent, setRecent] = useState<RecentEntry[]>([])
+
+  const refreshRecent = useCallback(() => {
+    listRecent().then(setRecent).catch(() => setRecent([]))
+  }, [])
+  useEffect(refreshRecent, [refreshRecent])
 
   const openBytes = useCallback(async (bytes: ArrayBuffer, name: string) => {
     setError(null)
@@ -45,23 +56,39 @@ export default function App() {
       setFilename(name)
       setIndex(0)
       setStatus('ready')
+      // PowerPoint Show files (.ppsx) are meant to open straight into the slideshow.
+      if (isSlideshowFile(name)) setPresenting(true)
+      void addRecent(name, bytes).then(refreshRecent).catch(() => undefined)
     } catch (err) {
       console.error('[PPTX Viewer] Failed to open presentation:', err)
       setError(`Could not open the presentation: ${err instanceof Error ? err.message : err}`)
       setStatus(slides.length ? 'ready' : 'empty')
     }
-  }, [slides.length])
+  }, [slides.length, refreshRecent])
 
   const openFile = useCallback(
     async (file: File | undefined) => {
       if (!file) return
-      if (!file.name.toLowerCase().endsWith('.pptx')) {
-        setError('Please choose a .pptx file.')
+      if (!isPresentationFile(file.name)) {
+        setError('Please choose a PowerPoint file (.pptx, .ppsx, .potx, …).')
         return
       }
       await openBytes(await file.arrayBuffer(), file.name)
     },
     [openBytes],
+  )
+
+  const openRecent = useCallback(
+    async (entry: RecentEntry) => {
+      const bytes = await loadRecent(entry.id)
+      if (!bytes) {
+        setError(`"${entry.name}" is no longer stored. Please choose the file again.`)
+        refreshRecent()
+        return
+      }
+      await openBytes(bytes, entry.name)
+    },
+    [openBytes, refreshRecent],
   )
 
   // Opened from an intercepted download: the service worker stored the bytes.
@@ -179,7 +206,7 @@ export default function App() {
     <input
       ref={fileInput}
       type="file"
-      accept=".pptx"
+      accept={ACCEPT}
       className="hidden"
       onChange={(e) => {
         void openFile(e.target.files?.[0])
@@ -199,7 +226,7 @@ export default function App() {
             <div className="text-center">
               <h1 className="text-lg font-medium">Open a presentation</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Files stay on your device. Drop a .pptx anywhere on this page.
+                Files stay on your device. Drop a .pptx file anywhere on this page.
               </p>
             </div>
             {error && (
@@ -208,6 +235,34 @@ export default function App() {
               </Alert>
             )}
             <Button onClick={() => fileInput.current?.click()}>Choose file</Button>
+            {recent.length > 0 && (
+              <section className="mt-4 w-full max-w-sm" aria-label="Recent files">
+                <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Recent</span>
+                  <button
+                    type="button"
+                    className="underline-offset-2 hover:underline"
+                    onClick={() => void clearRecent().then(refreshRecent)}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <ul className="divide-y rounded-md border">
+                  {recent.map((entry) => (
+                    <li key={entry.id}>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
+                        onClick={() => void openRecent(entry)}
+                      >
+                        <span className="truncate">{entry.name}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{formatSize(entry.size)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </>
         )}
       </div>
@@ -277,6 +332,20 @@ export default function App() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => fileInput.current?.click()}>Open another file…</DropdownMenuItem>
+              {recent.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Recent</DropdownMenuLabel>
+                    {recent.map((entry) => (
+                      <DropdownMenuItem key={entry.id} onClick={() => void openRecent(entry)}>
+                        <span className="max-w-64 truncate">{entry.name}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem disabled={!!exporting} onClick={exportAll}>
                 {exporting ?? 'Export slides as PNGs'}
               </DropdownMenuItem>

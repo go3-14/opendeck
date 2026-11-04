@@ -280,6 +280,8 @@ export default function Presenter({ slides, startIndex, onExit }: Props) {
   }, [blank, typed, help, grid, pen, laser, next, prev, jumpTo, goTo, clearPen, exit, slides])
 
   const onClick = () => {
+    // Full screen needs a user gesture; a slideshow that started on its own gets it from the first click.
+    if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => undefined)
     if (blank) setBlank(null)
     else if (!grid && !pen) next()
   }
