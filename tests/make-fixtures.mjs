@@ -11,6 +11,7 @@
 // Slide 4  dark colour-map override (bg1 → dk1, tx1 → lt1) via bgRef
 // Slide 5  four large pictures over a picture background (slow-to-load images)
 // Slide 6  animation builds (entrance/exit on click) for the slideshow
+// Slide 7  SmartArt fallback drawing, table style, freeform shape, drop shadow
 //
 // What each slide should look like is listed in tests/README.md.
 
@@ -287,17 +288,83 @@ const slide6 = slideXml(
   { timing },
 );
 
+// Slide 7: SmartArt fallback drawing, table style, freeform shape, drop shadow.
+const DSP = 'http://schemas.microsoft.com/office/drawing/2008/diagram';
+const DGM = 'http://schemas.openxmlformats.org/drawingml/2006/diagram';
+const TABLE_STYLE_ID = '{11111111-2222-3333-4444-555555555555}';
+
+const diagramFrame =
+  `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="10" name="Diagram"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>` +
+  `<p:xfrm><a:off x="${IN}" y="${1.6 * IN}"/><a:ext cx="${6 * IN}" cy="${IN}"/></p:xfrm>` +
+  `<a:graphic><a:graphicData uri="${DGM}"><dgm:relIds xmlns:dgm="${DGM}" r:dm="rId8" r:lo="rId10" r:qs="rId11" r:cs="rId12"/></a:graphicData></a:graphic></p:graphicFrame>`;
+
+const diagramData =
+  `${HEAD}<dgm:dataModel xmlns:dgm="${DGM}" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><dgm:ptLst/>` +
+  `<dgm:extLst><a:ext uri="http://schemas.microsoft.com/office/drawing/2008/diagram"><dsp:dataModelExt xmlns:dsp="${DSP}" relId="rId9" minVer="${DGM}"/></a:ext></dgm:extLst></dgm:dataModel>`;
+
+const dspShape = (n, x, color, label) =>
+  `<dsp:sp modelId="{0000000${n}-0000-0000-0000-000000000000}"><dsp:nvSpPr><dsp:cNvPr id="0" name=""/><dsp:cNvSpPr/></dsp:nvSpPr>` +
+  `<dsp:spPr><a:xfrm><a:off x="${x}" y="0"/><a:ext cx="1800000" cy="900000"/></a:xfrm><a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom>${solid(color)}</dsp:spPr>` +
+  `<dsp:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="1800">${solid('FFFFFF')}</a:rPr><a:t>${label}</a:t></a:r></a:p></dsp:txBody></dsp:sp>`;
+const diagramDrawing =
+  `${HEAD}<dsp:drawing xmlns:dgm="${DGM}" xmlns:dsp="${DSP}" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+  `<dsp:spTree><dsp:nvGrpSpPr><dsp:cNvPr id="0" name=""/><dsp:cNvGrpSpPr/></dsp:nvGrpSpPr><dsp:grpSpPr/>` +
+  dspShape(1, 0, '7030A0', 'Step A') + dspShape(2, 2400000, 'C55A11', 'Step B') + '</dsp:spTree></dsp:drawing>';
+
+const borderLn = (tag, w, color) =>
+  `<a:${tag}><a:ln w="${w}">${scheme(color)}</a:ln></a:${tag}>`;
+const tableStyles =
+  `${HEAD}<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="${TABLE_STYLE_ID}">` +
+  `<a:tblStyle styleId="${TABLE_STYLE_ID}" styleName="Test style">` +
+  '<a:wholeTbl><a:tcTxStyle><a:fontRef idx="minor"><a:prstClr val="black"/></a:fontRef><a:schemeClr val="dk1"/></a:tcTxStyle>' +
+  `<a:tcStyle><a:tcBdr>${['left', 'right', 'top', 'bottom', 'insideH', 'insideV'].map((t) => borderLn(t, 12700, 'lt1')).join('')}</a:tcBdr>` +
+  '<a:fill><a:solidFill><a:schemeClr val="accent1"><a:tint val="20000"/></a:schemeClr></a:solidFill></a:fill></a:tcStyle></a:wholeTbl>' +
+  '<a:band1H><a:tcStyle><a:tcBdr/><a:fill><a:solidFill><a:schemeClr val="accent1"><a:tint val="40000"/></a:schemeClr></a:solidFill></a:fill></a:tcStyle></a:band1H>' +
+  '<a:firstRow><a:tcTxStyle b="on"><a:fontRef idx="minor"><a:prstClr val="black"/></a:fontRef><a:schemeClr val="lt1"/></a:tcTxStyle>' +
+  `<a:tcStyle><a:tcBdr>${borderLn('bottom', 38100, 'lt1')}</a:tcBdr><a:fill><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:fill></a:tcStyle></a:firstRow>` +
+  '</a:tblStyle></a:tblStyleLst>';
+
+const cell = (t) => `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>${run(t)}</a:p></a:txBody><a:tcPr/></a:tc>`;
+const styledTable =
+  `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="11" name="Styled table"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>` +
+  `<p:xfrm><a:off x="${4 * IN}" y="${4.2 * IN}"/><a:ext cx="${5 * IN}" cy="${1.5 * IN}"/></p:xfrm>` +
+  `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl>` +
+  `<a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>${TABLE_STYLE_ID}</a:tableStyleId></a:tblPr>` +
+  `<a:tblGrid><a:gridCol w="${2.5 * IN}"/><a:gridCol w="${2.5 * IN}"/></a:tblGrid>` +
+  ['Header A|Header B', 'Banded 1|x', 'Plain|y'].map((r) => `<a:tr h="${0.5 * IN}">${r.split('|').map(cell).join('')}</a:tr>`).join('') +
+  '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>';
+
+// Freeform: a rectangle whose bottom edge is a half ellipse (line, line, arc, close).
+const freeform =
+  `<p:sp><p:nvSpPr><p:cNvPr id="12" name="Freeform"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(8 * IN, 1.6 * IN, 2 * IN, 2 * IN)}` +
+  '<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="100" h="100">' +
+  '<a:moveTo><a:pt x="0" y="0"/></a:moveTo><a:lnTo><a:pt x="100" y="0"/></a:lnTo><a:lnTo><a:pt x="100" y="60"/></a:lnTo>' +
+  '<a:arcTo wR="50" hR="40" stAng="0" swAng="10800000"/><a:close/></a:path></a:pathLst></a:custGeom>' +
+  `${solid('00B0F0')}</p:spPr></p:sp>`;
+
+// Drop shadow: 6pt at 45 degrees, 4pt blur, 60% black.
+const shadowed =
+  `<p:sp><p:nvSpPr><p:cNvPr id="13" name="Shadow"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(IN, 4.9 * IN, 2 * IN, IN)}` +
+  `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${solid('FFC000')}` +
+  '<a:effectLst><a:outerShdw blurRad="50800" dist="76200" dir="2700000" algn="tl" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="60000"/></a:srgbClr></a:outerShdw></a:effectLst>' +
+  '</p:spPr></p:sp>';
+
+const slide7 = slideXml(
+  ph(2, 'Title', 'type="title"', '', tx(para(run('SmartArt, table style, freeform, shadow')))) +
+  diagramFrame + styledTable + freeform + shadowed,
+);
+
 // ─── Package ──────────────────────────────────────────────────────────────────
 const zip = new JSZip();
 zip.file('[Content_Types].xml', `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/></Types>`);
 zip.file('_rels/.rels', rels(rel('rId1', 'officeDocument', 'ppt/presentation.xml')));
 zip.file('ppt/presentation.xml',
   `${HEAD}<p:presentation ${NS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>` +
-  '<p:sldIdLst>' + [2, 3, 4, 5, 6, 7].map((n) => `<p:sldId id="${254 + n}" r:id="rId${n}"/>`).join('') +
+  '<p:sldIdLst>' + [2, 3, 4, 5, 6, 7, 8].map((n) => `<p:sldId id="${254 + n}" r:id="rId${n}"/>`).join('') +
   '</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>');
 zip.file('ppt/_rels/presentation.xml.rels', rels(
   rel('rId1', 'slideMaster', 'slideMasters/slideMaster1.xml') +
-  [1, 2, 3, 4, 5, 6].map((n) => rel(`rId${n + 1}`, 'slide', `slides/slide${n}.xml`)).join('') +
+  [1, 2, 3, 4, 5, 6, 7].map((n) => rel(`rId${n + 1}`, 'slide', `slides/slide${n}.xml`)).join('') +
   rel('rId20', 'theme', 'theme/theme1.xml')));
 zip.file('ppt/theme/theme1.xml', themeXml);
 zip.file('ppt/slideMasters/slideMaster1.xml', masterXml);
@@ -310,15 +377,22 @@ zip.file('ppt/slideLayouts/slideLayout2.xml', layout2Xml);
 for (const n of [1, 2]) {
   zip.file(`ppt/slideLayouts/_rels/slideLayout${n}.xml.rels`, rels(rel('rId1', 'slideMaster', '../slideMasters/slideMaster1.xml')));
 }
-[[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2], [slide5, 2], [slide6, 2]].forEach(([xml, layout], i) => {
+[[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2], [slide5, 2], [slide6, 2], [slide7, 2]].forEach(([xml, layout], i) => {
   const n = i + 1;
   zip.file(`ppt/slides/slide${n}.xml`, xml);
   zip.file(`ppt/slides/_rels/slide${n}.xml.rels`, rels(
     rel('rId1', 'slideLayout', `../slideLayouts/slideLayout${layout}.xml`) +
     (n === 3 ? rel('rId2', 'image', '../media/image1.png') : '') +
+    (n === 7
+      ? rel('rId8', 'diagramData', '../diagrams/data1.xml') +
+        `<Relationship Id="rId9" Type="http://schemas.microsoft.com/office/2007/relationships/diagramDrawing" Target="../diagrams/drawing1.xml"/>`
+      : '') +
     (n === 5 ? [0, 1, 2, 3, 4].map((k) => rel(`rId${k + 2}`, 'image', `../media/heavy${k}.png`)).join('') : '')));
 });
 zip.file('ppt/media/image1.png', quadrantPng());
+zip.file('ppt/diagrams/data1.xml', diagramData);
+zip.file('ppt/diagrams/drawing1.xml', diagramDrawing);
+zip.file('ppt/tableStyles.xml', tableStyles);
 HEAVY_TINTS.forEach((tint, k) => zip.file(`ppt/media/heavy${k}.png`, noisyPng(1600, 1200, tint)));
 zip.file('ppt/media/heavy4.png', noisyPng(1920, 1080, [120, 120, 160]));
 
