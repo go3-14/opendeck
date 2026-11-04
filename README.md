@@ -83,11 +83,13 @@ Supported:
 - preset shapes (common rectangles, polygons, arrows, stars, connectors), groups with child scaling, rotation and flips, dashed lines and arrowheads;
 - PNG/JPEG/GIF/BMP/WebP/SVG pictures with cropping, loaded lazily;
 - tables with merged cells and explicit fills/borders;
-- zoom, thumbnails, and export as a ZIP of PNGs.
+- zoom, thumbnails, and export as a ZIP of PNGs;
+- **Present** (button or F5): full-screen slideshow that plays animation builds. Entrance effects reveal shapes and exit effects hide them, one click at a time (click, arrow, space or enter = next; left arrow, backspace or right-click = back; Esc = exit). The normal view shows every shape, like PowerPoint's editing view.
 
 Known limitations:
 
-- charts and SmartArt show a fallback badge; video, audio, animations and transitions are ignored;
+- charts and SmartArt show a fallback badge; video and audio are ignored;
+- animations are reduced to show/hide: only entrance and exit effects of whole shapes are played, instantly. Emphasis and motion paths, timing, easing, per-paragraph text builds, triggers and slide transitions are ignored;
 - EMF/WMF images are not rendered;
 - custom (freeform) geometry is drawn as a rectangle, and less common preset shapes fall back to rectangles;
 - table styles from `tableStyles.xml` (banding, header fills) are not applied; only explicit cell fills and borders are;

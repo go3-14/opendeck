@@ -1,6 +1,6 @@
 # Renderer test deck
 
-`make-fixtures.mjs` generates a 5-slide deck that exercises the renderer's inheritance and drawing features. There is no automated runner yet; check it in a browser.
+`make-fixtures.mjs` generates a 6-slide deck that exercises the renderer's inheritance and drawing features. There is no automated runner yet; check it in a browser.
 
 ```bash
 npm run build
@@ -17,6 +17,7 @@ Open `http://127.0.0.1:8767/viewer.html`, choose `dist/rich.pptx` (or feed it to
 | 3 | Picture shows only the red quadrant of the 4-colour image (crop). Table with a merged "Merged header" cell spanning two columns. |
 | 4 | Dark `#111111` background and white text: the slide's colour-map override maps `bg1`→`dk1` and `tx1`→`lt1`. |
 | 5 | Four large noisy pictures (red, green, blue, yellow tint) over a picture background. Used for the progressive-paint check below; the file is about 25 MB. |
+| 6 | Animation builds. In the normal view all three squares (red, green, blue) are visible. In **Present**: start shows none; click 1 shows red; click 2 shows green and hides red; click 3 shows blue (green stays). Going back (left arrow) undoes the last build. |
 
 ## Progressive-paint check (slides must appear whole)
 

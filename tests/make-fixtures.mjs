@@ -10,6 +10,7 @@
 // Slide 3  cropped image (top-left quadrant is red), table with a merged cell
 // Slide 4  dark colour-map override (bg1 → dk1, tx1 → lt1) via bgRef
 // Slide 5  four large pictures over a picture background (slow-to-load images)
+// Slide 6  animation builds (entrance/exit on click) for the slideshow
 //
 // What each slide should look like is listed in tests/README.md.
 
@@ -127,9 +128,9 @@ const connector = (id, geom, x, y, w, h, ln) =>
   `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="${id}" name="Connector ${id}"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>` +
   `<p:spPr>${xfrm(x, y, w, h)}<a:prstGeom prst="${geom}"><a:avLst/></a:prstGeom>${ln}</p:spPr></p:cxnSp>`;
 
-const slideXml = (shapes, { bg = '', clrMapOvr = '<a:masterClrMapping/>' } = {}) =>
+const slideXml = (shapes, { bg = '', clrMapOvr = '<a:masterClrMapping/>', timing = '' } = {}) =>
   `${HEAD}<p:sld ${NS}><p:cSld>${bg}<p:spTree>${grpHead}${shapes}</p:spTree></p:cSld>` +
-  `<p:clrMapOvr>${clrMapOvr}</p:clrMapOvr></p:sld>`;
+  `<p:clrMapOvr>${clrMapOvr}</p:clrMapOvr>${timing}</p:sld>`;
 
 const sldNum = (id) =>
   ph(id, 'Slide Number', 'type="sldNum" idx="12"', '', tx(para('<a:fld id="{00000000-1234-1234-1234-123412341234}" type="slidenum"><a:rPr lang="en-US"/><a:t>‹#›</a:t></a:fld>')));
@@ -259,17 +260,44 @@ const slide5 = slideXml(
   { bg: "<p:bg><p:bgPr><a:blipFill><a:blip r:embed=\"rId6\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst/></p:bgPr></p:bg>" },
 );
 
+// Slide 6: animation builds. Red appears on click 1; on click 2 green appears and
+// red leaves; blue appears on click 3. Used to check the slideshow's build steps.
+const effect = (id, spid, cls, node) =>
+  `<p:par><p:cTn id="${id}" presetID="1" presetClass="${cls}" presetSubtype="0" fill="hold" nodeType="${node}">` +
+  `<p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst><p:set><p:cBhvr>` +
+  `<p:cTn id="${id + 1}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>` +
+  `<p:tgtEl><p:spTgt spid="${spid}"/></p:tgtEl><p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr>` +
+  `<p:to><p:strVal val="${cls === 'exit' ? 'hidden' : 'visible'}"/></p:to></p:set></p:childTnLst></p:cTn></p:par>`;
+const clickStep = (id, effects) =>
+  `<p:par><p:cTn id="${id}" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst>` +
+  `<p:par><p:cTn id="${id + 1}" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>${effects}</p:childTnLst></p:cTn></p:par>` +
+  `</p:childTnLst></p:cTn></p:par>`;
+const timing =
+  `<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst>` +
+  `<p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>` +
+  clickStep(3, effect(5, 10, "entr", "clickEffect")) +
+  clickStep(8, effect(10, 11, "entr", "clickEffect") + effect(12, 10, "exit", "withEffect")) +
+  clickStep(13, effect(15, 12, "entr", "clickEffect")) +
+  `</p:childTnLst></p:cTn></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>`;
+const slide6 = slideXml(
+  ph(2, "Title", "type=\"title\"", "", tx(para(run("Animation builds")))) +
+  shape(10, "Red", "rect", `${xfrm(IN, 2 * IN, 2.5 * IN, 2.5 * IN)}${solid("FF0000")}`) +
+  shape(11, "Green", "rect", `${xfrm(4.5 * IN, 2 * IN, 2.5 * IN, 2.5 * IN)}${solid("00B050")}`) +
+  shape(12, "Blue", "rect", `${xfrm(8 * IN, 2 * IN, 2.5 * IN, 2.5 * IN)}${solid("0070C0")}`),
+  { timing },
+);
+
 // ─── Package ──────────────────────────────────────────────────────────────────
 const zip = new JSZip();
 zip.file('[Content_Types].xml', `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/></Types>`);
 zip.file('_rels/.rels', rels(rel('rId1', 'officeDocument', 'ppt/presentation.xml')));
 zip.file('ppt/presentation.xml',
   `${HEAD}<p:presentation ${NS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>` +
-  '<p:sldIdLst>' + [2, 3, 4, 5, 6].map((n) => `<p:sldId id="${254 + n}" r:id="rId${n}"/>`).join('') +
+  '<p:sldIdLst>' + [2, 3, 4, 5, 6, 7].map((n) => `<p:sldId id="${254 + n}" r:id="rId${n}"/>`).join('') +
   '</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>');
 zip.file('ppt/_rels/presentation.xml.rels', rels(
   rel('rId1', 'slideMaster', 'slideMasters/slideMaster1.xml') +
-  [1, 2, 3, 4, 5].map((n) => rel(`rId${n + 1}`, 'slide', `slides/slide${n}.xml`)).join('') +
+  [1, 2, 3, 4, 5, 6].map((n) => rel(`rId${n + 1}`, 'slide', `slides/slide${n}.xml`)).join('') +
   rel('rId20', 'theme', 'theme/theme1.xml')));
 zip.file('ppt/theme/theme1.xml', themeXml);
 zip.file('ppt/slideMasters/slideMaster1.xml', masterXml);
@@ -282,7 +310,7 @@ zip.file('ppt/slideLayouts/slideLayout2.xml', layout2Xml);
 for (const n of [1, 2]) {
   zip.file(`ppt/slideLayouts/_rels/slideLayout${n}.xml.rels`, rels(rel('rId1', 'slideMaster', '../slideMasters/slideMaster1.xml')));
 }
-[[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2], [slide5, 2]].forEach(([xml, layout], i) => {
+[[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2], [slide5, 2], [slide6, 2]].forEach(([xml, layout], i) => {
   const n = i + 1;
   zip.file(`ppt/slides/slide${n}.xml`, xml);
   zip.file(`ppt/slides/_rels/slide${n}.xml.rels`, rels(
