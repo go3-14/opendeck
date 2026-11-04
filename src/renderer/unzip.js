@@ -101,6 +101,7 @@ async function orderedSlidePaths(zip, existingSlidePaths) {
  *   imageRels: Map<string, Map<string, string>>,
  *   diagrams: Map<string, Map<string, string>>,
  *   charts: Map<string, Map<string, string>>,
+ *   notes: Map<string, string>,
  *   tableStylesXml: string|null,
  *   presentationXml: string|null,
  *   slidePaths: string[],
@@ -112,6 +113,7 @@ async function orderedSlidePaths(zip, existingSlidePaths) {
  *   - imageRels: rId → media path for every slide, layout and master
  *   - diagrams: per slide, the SmartArt data-model rId → the pre-drawn fallback
  *     drawing XML PowerPoint stores next to it (what we render instead of the badge)
+ *   - notes: slide path → speaker notes as plain text (paragraphs separated by newlines)
  *   - charts: per slide, chart relationship rId → chart part XML
  *   - tableStylesXml: ppt/tableStyles.xml, if present
  */
@@ -189,6 +191,25 @@ export async function unzipPptx(arrayBuffer) {
     }
     if (byRel.size) charts.set(slidePath, byRel);
   }
+  // ── Speaker notes ─────────────────────────────────────────────────────────
+  const notes = new Map();
+  for (const slidePath of slidePaths) {
+    const notesPath = relsByPart.get(slidePath)?.find((r) => r.type.endsWith('/notesSlide'))?.target;
+    if (!notesPath || !zip.file(notesPath)) continue;
+    const doc = parseXml(await text(notesPath));
+    const paragraphs = [];
+    for (const sp of doc.getElementsByTagName('*')) {
+      if (sp.localName !== 'sp') continue;
+      const ph = [...sp.getElementsByTagName('*')].find((e) => e.localName === 'ph');
+      if (ph?.getAttribute('type') !== 'body') continue; // skip slide image, slide number, header, footer
+      for (const p of sp.getElementsByTagName('*')) {
+        if (p.localName !== 'p') continue;
+        paragraphs.push([...p.getElementsByTagName('*')].filter((e) => e.localName === 't').map((e) => e.textContent).join(''));
+      }
+    }
+    const joined = paragraphs.join('\n').trim();
+    if (joined) notes.set(slidePath, joined);
+  }
   const tableStylesXml = zip.file('ppt/tableStyles.xml') ? await text('ppt/tableStyles.xml') : null;
 
   // ── Media: loaded lazily, only when a shape actually draws it ──────────────
@@ -205,6 +226,6 @@ export async function unzipPptx(arrayBuffer) {
 
   return {
     slideXmls, layoutXmls, masterXmls, themeXml, themeXmls, media,
-    slideRels, imageRels, diagrams, charts, tableStylesXml, presentationXml, slidePaths, layoutPaths, masterPaths,
+    slideRels, imageRels, diagrams, charts, notes, tableStylesXml, presentationXml, slidePaths, layoutPaths, masterPaths,
   };
 }

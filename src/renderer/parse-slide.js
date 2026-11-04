@@ -11,6 +11,7 @@
 //
 // SlideModel = { width, height, background: Fill, shapes: Shape[], animation }
 // animation = null | { initialHidden: id[], clickSteps: [[{id, show}]] }  (see parseAnimations)
+// transition = null | { type, dir, ms }; notes = speaker notes text
 // Fill  = {type:'none'} | {type:'solid', color} |
 //         {type:'gradient', stops:[{pos,color}], angle, radial} |
 //         {type:'image', loadBlob, crop}
@@ -904,6 +905,32 @@ function parseAnimations(slideDoc) {
   return { initialHidden: [...hidden], clickSteps };
 }
 
+// ─── Transitions ──────────────────────────────────────────────────────────────
+
+const TRANSITION_SPEEDS = { slow: 1000, med: 750, fast: 500 };
+
+/**
+ * Reads <p:transition> into { type: 'fade'|'push'|'cover'|'wipe', dir, ms }, or null.
+ * Effects we do not animate specially fall back to a fade. `dir` is the
+ * direction the new slide moves: 'l', 'r', 'u' or 'd'.
+ */
+function parseTransition(slideDoc) {
+  const el = findFirst(slideDoc, 'transition');
+  if (!el) return null;
+  const effect = Array.from(el.children).find((c) => c.localName !== 'sndAc' && c.localName !== 'extLst');
+  if (!effect) return null;
+
+  const p14dur = el.getAttributeNS('http://schemas.microsoft.com/office/powerpoint/2010/main', 'dur');
+  const ms = p14dur ? parseInt(p14dur, 10) : TRANSITION_SPEEDS[el.getAttribute('spd')] ?? 700;
+
+  const known = { push: 'push', cover: 'cover', pull: 'push', wipe: 'wipe', fade: 'fade' };
+  return {
+    type: known[effect.localName] ?? 'fade',
+    dir: effect.getAttribute('dir') || 'l',
+    ms: Number.isFinite(ms) && ms > 0 ? Math.min(ms, 3000) : 700,
+  };
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -930,6 +957,7 @@ export function parseSlideSize(presentationXml) {
  * @param {Map<string,string>} [inherit.masterImageRels]
  * @param {number} [inherit.slideNumber]    1-based, for slide-number fields
  * @param {Map<string,string>} [inherit.diagrams]  SmartArt data-model rId → fallback drawing XML
+ * @param {string} [inherit.notes]        speaker notes (plain text)
  * @param {Map<string,string>} [inherit.charts]    chart relationship rId → chart part XML
  * @param {string|null} [inherit.tableStylesXml]   ppt/tableStyles.xml
  */
@@ -979,5 +1007,10 @@ export function parseSlide(slideXml, themeCtx, media, slideSize, slideImageRels 
   const spTree = findFirst(slideDoc, 'spTree');
   for (const el of spTree?.children || []) shapes.push(...parseShapeList(el, slidePc));
 
-  return { width, height, background, shapes, animation: parseAnimations(slideDoc) };
+  return {
+    width, height, background, shapes,
+    animation: parseAnimations(slideDoc),
+    transition: parseTransition(slideDoc),
+    notes: inherit.notes || '',
+  };
 }

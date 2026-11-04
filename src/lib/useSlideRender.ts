@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { renderSlide } from '@/renderer/render-canvas.js'
 import type { Slide } from './pptx'
 import { thumbnailLimiter } from './renderQueue'
@@ -12,6 +12,8 @@ interface Options {
   enabled?: boolean
   /** Animation build step to draw; omit to draw every shape. */
   step?: number
+  /** Called right after the canvas was updated with a finished slide. */
+  onDrawn?: () => void
 }
 
 /**
@@ -26,8 +28,12 @@ export function useSlideRender(
   slide: Slide | undefined,
   scale: number,
   dpr?: number,
-  { cache = false, limited = false, enabled = true, step }: Options = {},
+  { cache = false, limited = false, enabled = true, step, onDrawn }: Options = {},
 ) {
+  // Latest callback without re-running the render effect when it changes.
+  const onDrawnRef = useRef(onDrawn)
+  onDrawnRef.current = onDrawn
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!enabled || !slide || !canvas) return
@@ -36,7 +42,10 @@ export function useSlideRender(
     const task = () =>
       controller.signal.aborted
         ? Promise.resolve(false)
-        : renderSlide(slide, canvas, scale, dpr, { signal: controller.signal, cache, step })
+        : renderSlide(slide, canvas, scale, dpr, { signal: controller.signal, cache, step }).then((drawn: boolean) => {
+            if (drawn) onDrawnRef.current?.()
+            return drawn
+          })
 
     const run = limited ? thumbnailLimiter(task) : task()
     run.catch((err: unknown) => console.warn('[PPTX Viewer] Slide render failed:', err))
