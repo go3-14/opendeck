@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Two stacked slides with a play triangle: "a deck you can present". -->
+  <rect x="28" y="26" width="92" height="58" rx="10" fill="#93c5fd"/>
+  <rect x="8" y="44" width="92" height="58" rx="10" fill="#2563eb"/>
+  <path d="M46 61v26l23-13z" fill="#ffffff"/>
+</svg>
