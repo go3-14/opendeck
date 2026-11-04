@@ -1,6 +1,6 @@
 # Renderer test deck
 
-`make-fixtures.mjs` generates a 4-slide deck that exercises the renderer's inheritance and drawing features. There is no automated runner yet; check it in a browser.
+`make-fixtures.mjs` generates a 5-slide deck that exercises the renderer's inheritance and drawing features. There is no automated runner yet; check it in a browser.
 
 ```bash
 npm run build
@@ -16,3 +16,14 @@ Open `http://127.0.0.1:8767/viewer.html`, choose `dist/rich.pptx` (or feed it to
 | 2 | White → light-blue gradient background. Blue square and green circle, each 3in (group child space scaled 3×). Orange rounded rectangle, rotated, with white "Style fill" text (fill and font colour come from `<p:style>`). Dashed red arrow and a blue elbow connector with an arrowhead. Title centred (layout list style). No blue bar (layout 2). |
 | 3 | Picture shows only the red quadrant of the 4-colour image (crop). Table with a merged "Merged header" cell spanning two columns. |
 | 4 | Dark `#111111` background and white text: the slide's colour-map override maps `bg1`→`dk1` and `tx1`→`lt1`. |
+| 5 | Four large noisy pictures (red, green, blue, yellow tint) over a picture background. Used for the progressive-paint check below; the file is about 25 MB. |
+
+## Progressive-paint check (slides must appear whole)
+
+A slide must never be visible half-drawn. With the deck loaded in the viewer, record the main canvas as it changes while navigating:
+
+1. Visit slides 1–5 once and save a coarse signature of each finished slide (sample a 6×6 grid of pixels from `main canvas`).
+2. Reload the page, open the deck again, and jump between slides quickly (for example 5, 2, 5, 3, 4, 5, 1, 5, 60 ms apart) while sampling the canvas every few ms.
+3. Every distinct state seen must equal one of the saved finished-slide signatures (plus the initial empty canvas), and the last one must be slide 5. Any other state is a half-drawn slide.
+
+Before the preload/atomic-draw fix, jumping to slide 5 on a cold page produced six states (blank, background only, then each picture arriving). Now it produces the empty canvas followed by the complete slide.

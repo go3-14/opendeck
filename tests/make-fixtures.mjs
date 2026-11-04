@@ -9,10 +9,12 @@
 //          rotated shape, dashed + arrowed connectors, rounded rectangle
 // Slide 3  cropped image (top-left quadrant is red), table with a merged cell
 // Slide 4  dark colour-map override (bg1 → dk1, tx1 → lt1) via bgRef
+// Slide 5  four large pictures over a picture background (slow-to-load images)
 //
 // What each slide should look like is listed in tests/README.md.
 
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import JSZip from 'jszip';
 
@@ -70,6 +72,30 @@ function quadrantPng() {
     chunk('IHDR', ihdr),
     chunk('IDAT', zlib.deflateSync(Buffer.concat(rows))),
     chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** Large tinted-noise PNG: slow to read and decode, so progressive painting is easy to observe. */
+function noisyPng(w, h, [r, g, b]) {
+  const noise = crypto.randomBytes(w * h * 3);
+  const raw = Buffer.alloc(h * (w * 3 + 1));
+  const base = [r, g, b];
+  for (let y = 0; y < h; y++) {
+    const o = y * (w * 3 + 1);
+    raw[o] = 0;
+    for (let i = 0; i < w * 3; i++) {
+      raw[o + 1 + i] = Math.max(0, Math.min(255, base[i % 3] - 30 + (noise[y * w * 3 + i] % 61)));
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", zlib.deflateSync(raw, { level: 1 })),
+    chunk("IEND", Buffer.alloc(0)),
   ]);
 }
 
@@ -219,18 +245,32 @@ const slide4 = slideXml(
   },
 );
 
+// Slide 5: four large pictures over a picture background (used to check that a
+// slide appears all at once instead of piece by piece).
+const HEAVY_TINTS = [[220, 60, 60], [60, 200, 60], [60, 60, 220], [220, 200, 60]];
+const heavyPic = (n, x, y) =>
+  `<p:pic><p:nvPicPr><p:cNvPr id="${10 + n}" name="Heavy ${n}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
+  `<p:blipFill><a:blip r:embed="rId${n + 2}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>` +
+  `<p:spPr>${xfrm(x, y, 4.5 * IN, 2.2 * IN)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+const slide5 = slideXml(
+  ph(2, "Title", "type=\"title\"", "", tx(para(run("Heavy images")))) +
+  heavyPic(0, 0.6 * IN, 1.5 * IN) + heavyPic(1, 6.4 * IN, 1.5 * IN) +
+  heavyPic(2, 0.6 * IN, 4 * IN) + heavyPic(3, 6.4 * IN, 4 * IN),
+  { bg: "<p:bg><p:bgPr><a:blipFill><a:blip r:embed=\"rId6\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst/></p:bgPr></p:bg>" },
+);
+
 // ─── Package ──────────────────────────────────────────────────────────────────
 const zip = new JSZip();
 zip.file('[Content_Types].xml', `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/></Types>`);
 zip.file('_rels/.rels', rels(rel('rId1', 'officeDocument', 'ppt/presentation.xml')));
 zip.file('ppt/presentation.xml',
   `${HEAD}<p:presentation ${NS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>` +
-  '<p:sldIdLst>' + [2, 3, 4, 5].map((n) => `<p:sldId id="${254 + n}" r:id="rId${n}"/>`).join('') +
+  '<p:sldIdLst>' + [2, 3, 4, 5, 6].map((n) => `<p:sldId id="${254 + n}" r:id="rId${n}"/>`).join('') +
   '</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>');
 zip.file('ppt/_rels/presentation.xml.rels', rels(
   rel('rId1', 'slideMaster', 'slideMasters/slideMaster1.xml') +
-  [1, 2, 3, 4].map((n) => rel(`rId${n + 1}`, 'slide', `slides/slide${n}.xml`)).join('') +
-  rel('rId6', 'theme', 'theme/theme1.xml')));
+  [1, 2, 3, 4, 5].map((n) => rel(`rId${n + 1}`, 'slide', `slides/slide${n}.xml`)).join('') +
+  rel('rId20', 'theme', 'theme/theme1.xml')));
 zip.file('ppt/theme/theme1.xml', themeXml);
 zip.file('ppt/slideMasters/slideMaster1.xml', masterXml);
 zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', rels(
@@ -242,14 +282,17 @@ zip.file('ppt/slideLayouts/slideLayout2.xml', layout2Xml);
 for (const n of [1, 2]) {
   zip.file(`ppt/slideLayouts/_rels/slideLayout${n}.xml.rels`, rels(rel('rId1', 'slideMaster', '../slideMasters/slideMaster1.xml')));
 }
-[[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2]].forEach(([xml, layout], i) => {
+[[slide1, 1], [slide2, 2], [slide3, 2], [slide4, 2], [slide5, 2]].forEach(([xml, layout], i) => {
   const n = i + 1;
   zip.file(`ppt/slides/slide${n}.xml`, xml);
   zip.file(`ppt/slides/_rels/slide${n}.xml.rels`, rels(
     rel('rId1', 'slideLayout', `../slideLayouts/slideLayout${layout}.xml`) +
-    (n === 3 ? rel('rId2', 'image', '../media/image1.png') : '')));
+    (n === 3 ? rel('rId2', 'image', '../media/image1.png') : '') +
+    (n === 5 ? [0, 1, 2, 3, 4].map((k) => rel(`rId${k + 2}`, 'image', `../media/heavy${k}.png`)).join('') : '')));
 });
 zip.file('ppt/media/image1.png', quadrantPng());
+HEAVY_TINTS.forEach((tint, k) => zip.file(`ppt/media/heavy${k}.png`, noisyPng(1600, 1200, tint)));
+zip.file('ppt/media/heavy4.png', noisyPng(1920, 1080, [120, 120, 160]));
 
 fs.writeFileSync(out, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 console.log(`wrote ${out}`);
