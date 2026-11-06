@@ -12,7 +12,9 @@
     "licenses": "node scripts/third-party-licenses.mjs",
     "screenshots": "node scripts/make-screenshots.mjs",
     "package": "node scripts/package.mjs",
-    "package:firefox": "node scripts/package.mjs --firefox"
+    "package:firefox": "node scripts/package.mjs --firefox",
+    "site": "vite --config vite.site.config.ts",
+    "site:build": "tsc --noEmit && vite build --config vite.site.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
