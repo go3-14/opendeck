@@ -90,3 +90,7 @@ Requires Firefox 140 or newer.
 ## Website
 
 The site in `docs/` is plain HTML and CSS, served by GitHub Pages (Settings → Pages → Deploy from branch → `master` → `/docs`). Once a store listing is live, replace its "coming soon" button in `docs/index.html` with the real link, and put the site URL in the store's homepage field. Support requests go to GitHub Issues through the forms in `.github/ISSUE_TEMPLATE/`.
+
+### Editing the site
+
+The site is a small React app in `site/` that reuses the extension's design tokens and shadcn components. Edit it there, then run `npm run site:build` and commit the regenerated `docs/` folder (`npm run site` starts a dev server). `site/public/CNAME` holds the custom domain once one is set; the build copies it into `docs/`.

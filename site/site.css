@@ -1,0 +1,22 @@
+@import "../src/index.css";
+
+@source "./";
+@source "../src/components";
+
+html { scroll-behavior: smooth; scroll-padding-top: 4.5rem; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body { @apply bg-background text-foreground antialiased; font-family: var(--font-sans); }
+
+/* shadcn accordion: let the panel animate to its measured height (Base UI sets --accordion-panel-height). */
+[data-slot='accordion-content'] {
+  animation: none !important;
+  height: var(--accordion-panel-height);
+  transition: height 0.24s ease;
+}
+[data-slot='accordion-content'][data-starting-style],
+[data-slot='accordion-content'][data-ending-style] { height: 0; }
+
+/* Scroll progress bar: a thin shadcn Progress pinned to the top. */
+.scroll-progress [data-slot='progress-track'] { height: 2px; border-radius: 0; background: transparent; }
+.scroll-progress [data-slot='progress-indicator'] { transition: width 0.12s linear; }
