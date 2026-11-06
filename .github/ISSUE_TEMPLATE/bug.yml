@@ -1,0 +1,55 @@
+name: Report a problem
+description: A presentation looks wrong, something does not open, or a feature is broken.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do **not** attach presentations with private content. A small redacted example that shows the problem is enough.
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Chrome
+        - Edge
+        - Firefox
+        - Zen
+        - Other Chromium browser
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+      description: Shown on the extensions page, for example 1.0.0.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect to see? Screenshots help, especially for slides that look wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the viewer
+        2. Choose the file
+        3. ...
+  - type: textarea
+    id: source
+    attributes:
+      label: Where did the file come from?
+      description: For example PowerPoint, Google Slides export, Keynote export, LibreOffice. Slides made by other tools often differ.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before sending
+      options:
+        - label: I searched the existing issues for the same problem.
+          required: true

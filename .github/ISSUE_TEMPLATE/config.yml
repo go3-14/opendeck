@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Privacy questions
+    url: https://github.com/go3-14/pptx_viewer_extension/blob/master/PRIVACY.md
+    about: What the extension stores and which permissions it uses.
+  - name: Frequently asked questions
+    url: https://go3-14.github.io/pptx_viewer_extension/#faq
+    about: Answers to common questions about downloads, local files and unsupported content.
