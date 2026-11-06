@@ -118,7 +118,7 @@ const tile = ({ w, h, big }) => `
 </style>
 <div class="copy">
   <div class="icon">${icon}</div>
-  <h1>PPTX Viewer</h1>
+  <h1>Opendeck</h1>
   <p>${big ? 'Open PowerPoint files in your browser.<br>Private by design.' : 'Open presentations in your browser.'}</p>
 </div>
 <div class="shot"><img src="${screenshot}" alt=""></div>`

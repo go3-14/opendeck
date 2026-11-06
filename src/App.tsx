@@ -73,7 +73,7 @@ export default function App() {
       if (isSlideshowFile(name)) setPresenting(true)
       void addRecent(name, bytes).then(refreshRecent).catch(() => undefined)
     } catch (err) {
-      console.error('[PPTX Viewer] Failed to open presentation:', err)
+      console.error('[Opendeck] Failed to open presentation:', err)
       setError(`Could not open the presentation: ${err instanceof Error ? err.message : err}`)
       setStatus(slides.length ? 'ready' : 'empty')
     }
@@ -128,7 +128,7 @@ export default function App() {
         return openBytes(payload.bytes, payload.filename || 'presentation.pptx')
       })
       .catch((err) => {
-        console.error('[PPTX Viewer] Handoff read failed:', err)
+        console.error('[Opendeck] Handoff read failed:', err)
         setStatus('empty')
         setError(`Could not load the presentation: ${err?.message || err}`)
       })

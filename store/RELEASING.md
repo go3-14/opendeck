@@ -25,7 +25,7 @@ How to publish a version to the Chrome Web Store and Microsoft Edge Add-ons. Lis
 6. Build the upload file:
 
    ```bash
-   npm run package                   # writes release/pptx-viewer-<version>.zip
+   npm run package                   # writes release/opendeck-<version>.zip
    ```
 
 ## Manual check in the real extension (about 10 minutes)
@@ -36,7 +36,7 @@ The automated test cannot cover browser features that only exist in an installed
 - [ ] Toolbar icon opens the viewer; choosing a file, dragging a file and the recent-files list all open it.
 - [ ] Without website access: downloading a `.pptx` saves normally and shows the "one more step" notification once; clicking it opens Settings.
 - [ ] Settings → **Turn on** shows Chrome's permission prompt; afterwards a downloaded `.pptx` opens in the viewer and does **not** appear in downloads.
-- [ ] Right-click a `.pptx` link: **Open in PPTX Viewer** opens it. With access off it opens Settings instead.
+- [ ] Right-click a `.pptx` link: **Open in Opendeck** opens it. With access off it opens Settings instead.
 - [ ] Settings → **Turn off** removes the access again.
 - [ ] A broken or blocked download (for example a link that needs a login you do not have) leaves the normal download in place and shows the notification.
 - [ ] Optional: with "Allow access to file URLs" enabled, opening a local `.pptx` works.
@@ -45,7 +45,7 @@ The automated test cannot cover browser features that only exist in an installed
 
 ## Publish: Chrome Web Store
 
-1. Open the developer dashboard, **Add new item** (or open the existing item and **Package → Upload new package**), and upload `release/pptx-viewer-<version>.zip`.
+1. Open the developer dashboard, **Add new item** (or open the existing item and **Package → Upload new package**), and upload `release/opendeck-<version>.zip`.
 2. **Store listing:** paste the description and summary from LISTING.md; set category Productivity and language English; upload `public/icons/icon128.png`, the five screenshots, the small tile and the marquee.
 3. **Privacy:** paste the single purpose, each permission justification and the privacy-policy URL; answer "no remote code"; leave all data-collection boxes unchecked and accept the three certifications.
 4. **Distribution:** public, all regions (or as you prefer).
@@ -65,7 +65,7 @@ Same zip. Create a new extension in the Partner Center, upload the package, reus
    git push origin v1.0.0
    ```
 
-   Then create a release from that tag on GitHub and upload `release/pptx-viewer-1.0.0.zip`.
+   Then create a release from that tag on GitHub and upload `release/opendeck-1.0.0.zip`.
 2. Add the store links to the README.
 3. Watch the issue tracker and the store's review feedback for the first week.
 
@@ -75,7 +75,7 @@ Bump the version, repeat the checks, run `npm run package`, then upload the new 
 
 ## Firefox and Zen
 
-Firefox and Zen use the same code with a different manifest (event-page background script, add-on id, no Chrome-only keys). `npm run package:firefox` writes `release/pptx-viewer-firefox-<version>.zip`.
+Firefox and Zen use the same code with a different manifest (event-page background script, add-on id, no Chrome-only keys). `npm run package:firefox` writes `release/opendeck-firefox-<version>.zip`.
 
 1. Sign in at <https://addons.mozilla.org/developers/> (free Firefox account).
 2. **Submit a New Add-on**, upload the Firefox zip, and pick how to distribute it:

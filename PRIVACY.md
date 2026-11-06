@@ -1,6 +1,6 @@
 # Privacy
 
-PPTX Viewer opens PowerPoint files entirely on your device.
+Opendeck opens PowerPoint files entirely on your device.
 
 - **No uploads, no servers, no analytics.** Presentations are read and drawn inside your browser. The extension contains no tracking and makes no network requests of its own.
 - **One fetch, only when you ask.** If you turn on "Open downloads and links here", the extension downloads the specific file you just clicked or right-clicked (the same address your browser was already fetching) so it can show it. Nothing else is requested.
@@ -11,7 +11,7 @@ PPTX Viewer opens PowerPoint files entirely on your device.
 | Permission | Why |
 | --- | --- |
 | `downloads` | Notice when a PowerPoint file starts downloading, so it can open in the viewer instead (the download is only cancelled after the file was read successfully). |
-| `contextMenus` | The "Open in PPTX Viewer" item when you right-click a presentation link. |
+| `contextMenus` | The "Open in Opendeck" item when you right-click a presentation link. |
 | `notifications` | Tell you when a file could not be opened, or how to turn on opening downloads. |
 | Access to websites (`<all_urls>`, **optional**) | Fetch the file you downloaded or right-clicked. Not requested at install: you grant it from Settings and can remove it at any time. |
 

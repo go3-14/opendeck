@@ -6,8 +6,8 @@ Everything to paste into the Chrome Web Store developer dashboard (and Microsoft
 
 | Field | Value |
 | --- | --- |
-| Name | PPTX Viewer |
-| Summary (132 characters max) | View PowerPoint presentations in your browser, with search and a full-screen slideshow. Files never leave your device. |
+| Name | Opendeck |
+| Summary (132 characters max) | Free, open-source viewer for PowerPoint files, with search and a full-screen slideshow. Files never leave your device. |
 | Category | Productivity |
 | Language | English |
 | Icon | `public/icons/icon128.png` (also in the zip) |
@@ -18,11 +18,11 @@ Everything to paste into the Chrome Web Store developer dashboard (and Microsoft
 ## Description
 
 ```text
-PPTX Viewer opens PowerPoint presentations right in your browser. No upload, no account, no server: your files are read and drawn on your own computer.
+Opendeck opens PowerPoint presentations right in your browser. No upload, no account, no server: your files are read and drawn on your own computer.
 
 OPEN FILES YOUR WAY
 • Click the toolbar icon, choose a file, or drop it on the page
-• Right-click a presentation link and choose "Open in PPTX Viewer"
+• Right-click a presentation link and choose "Open in Opendeck"
 • Optional: open presentations you download straight in the viewer
 • Recent files are one click away
 • Supports .pptx, .ppsx, .potx and macro-enabled variants
@@ -53,7 +53,7 @@ PRIVATE BY DESIGN
 
 Open source (MIT): https://github.com/go3-14/pptx_viewer_extension
 
-PowerPoint is a trademark of Microsoft Corporation. PPTX Viewer is an independent project and is not affiliated with or endorsed by Microsoft.
+PowerPoint is a trademark of Microsoft Corporation. Opendeck is an independent project and is not affiliated with or endorsed by Microsoft.
 ```
 
 ## Single purpose
@@ -65,7 +65,7 @@ PowerPoint is a trademark of Microsoft Corporation. PPTX Viewer is an independen
 | Permission | Justification to paste |
 | --- | --- |
 | `downloads` | Detects when a PowerPoint file starts downloading so it can be opened in the viewer instead. The download is only cancelled after the file has been read successfully; if anything fails, the normal download continues. |
-| `contextMenus` | Adds the single "Open in PPTX Viewer" item when the user right-clicks a link to a presentation file. |
+| `contextMenus` | Adds the single "Open in Opendeck" item when the user right-clicks a link to a presentation file. |
 | `notifications` | Tells the user when a file could not be opened, and (once) how to turn on opening downloads. |
 | Host access (`optional_host_permissions`, `<all_urls>`) | Optional, never requested at install. When the user turns on "Open downloads and links here" in Settings, the extension fetches the specific file the user just downloaded or right-clicked so it can be shown. The address can be on any website, which is why all sites are requested. It is not used to read or modify web pages, and it can be turned off at any time. |
 
@@ -82,7 +82,7 @@ No account or login is needed.
 2. Click the toolbar icon, choose "Choose file", and select store/sample/Quarterly Business Review.pptx from the source repository (https://github.com/go3-14/pptx_viewer_extension/tree/master/store/sample), or any .pptx file.
 3. Use the slide list, Search (Ctrl+F, try "growth"), and the More menu (copy, print, export).
 4. Click Present (or press F5) for the slideshow; press S for the speaker view, ? for all shortcuts, Esc to leave.
-5. Optional feature: in Settings press "Turn on", then click a link to any .pptx file on the web; it opens in the viewer instead of downloading. Right-clicking such a link also offers "Open in PPTX Viewer".
+5. Optional feature: in Settings press "Turn on", then click a link to any .pptx file on the web; it opens in the viewer instead of downloading. Right-clicking such a link also offers "Open in Opendeck".
 
 The extension makes no network requests of its own; it only fetches a file the user explicitly downloads or right-clicks, and only after the user grants the optional access.
 ```

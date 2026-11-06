@@ -1,6 +1,6 @@
-# PPTX Viewer
+# Opendeck
 
-A Chrome / Edge extension that opens PowerPoint presentations in the browser, with search, printing and a full-screen slideshow that plays animations. It works on your device: files are parsed and drawn locally, with no server, no upload and no tracking.
+A Chrome, Edge, Firefox and Zen extension that opens PowerPoint presentations in the browser, with search, printing and a full-screen slideshow that plays animations. It works on your device: files are parsed and drawn locally, with no server, no upload and no tracking.
 
 - Opens `.pptx`, `.ppsx`, `.potx` and the macro-enabled variants (`.pptm`, `.ppsm`, `.potm`).
 - Opens from the toolbar, by drag and drop, from a download, from a right-click on a link, or from the recent-files list.
@@ -30,7 +30,7 @@ See [PRIVACY.md](PRIVACY.md) for exactly what is processed, stored and requested
 
 - Toolbar icon, file picker, or drop a file anywhere on the page.
 - Downloads of presentation files open in the viewer instead of being saved. The native download is only cancelled after the file was read successfully, so a failure never loses the file.
-- Right-click a presentation link and choose **Open in PPTX Viewer**.
+- Right-click a presentation link and choose **Open in Opendeck**.
 - Recent files (the last five) on the start screen and in the **More** menu.
 - `.ppsx` shows open straight into the slideshow.
 
@@ -56,7 +56,7 @@ See [PRIVACY.md](PRIVACY.md) for exactly what is processed, stored and requested
 
 ### From a GitHub release (no build needed)
 
-1. Download `pptx-viewer-<version>.zip` from the [Releases page](https://github.com/go3-14/pptx_viewer_extension/releases) and unzip it into a folder you will keep.
+1. Download `opendeck-<version>.zip` from the [Releases page](https://github.com/go3-14/pptx_viewer_extension/releases) and unzip it into a folder you will keep.
 2. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
 3. Click **Load unpacked** and select the unzipped folder (the one containing `manifest.json`).
 
@@ -165,7 +165,7 @@ sequenceDiagram
 - **Detection** uses the file extension, the MIME type or the URL path, and waits for `onChanged` when Chrome has not filled in the filename yet.
 - **Safety order:** the bytes are stored before the native download is cancelled. On any failure the normal download continues and a notification explains.
 - **Handoff:** only an opaque random key travels in the URL. Records that were never read are swept after an hour and at startup.
-- **Right-click menu:** `contextMenus` adds *Open in PPTX Viewer* for links ending in a presentation extension.
+- **Right-click menu:** `contextMenus` adds *Open in Opendeck* for links ending in a presentation extension.
 - **Permissions:** website access is an *optional* host permission. Without it the worker does nothing to downloads; links open the Settings page instead.
 
 ### Viewer app (`src/`)
@@ -301,7 +301,7 @@ Text metrics depend on the fonts installed on your computer, so line breaks can 
 | Permission | Why |
 | --- | --- |
 | `downloads` | Notice a presentation download, read it, then open it in the viewer instead. |
-| `contextMenus` | The *Open in PPTX Viewer* item on links. |
+| `contextMenus` | The *Open in Opendeck* item on links. |
 | `notifications` | Report a file that could not be opened, or how to enable opening downloads. |
 | Website access (optional) | Fetch the file you downloaded or right-clicked. Requested from Settings, never at install. |
 
@@ -344,4 +344,4 @@ Store listing text, images and the release checklist live in [`store/`](store): 
 
 MIT. See [LICENSE](LICENSE). Third-party licences: [public/THIRD_PARTY_LICENSES.txt](public/THIRD_PARTY_LICENSES.txt).
 
-PowerPoint is a trademark of Microsoft Corporation. PPTX Viewer is an independent project and is not affiliated with or endorsed by Microsoft.
+PowerPoint is a trademark of Microsoft Corporation. Opendeck is an independent project and is not affiliated with or endorsed by Microsoft.

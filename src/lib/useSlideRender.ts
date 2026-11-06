@@ -48,7 +48,7 @@ export function useSlideRender(
           })
 
     const run = limited ? thumbnailLimiter(task) : task()
-    run.catch((err: unknown) => console.warn('[PPTX Viewer] Slide render failed:', err))
+    run.catch((err: unknown) => console.warn('[Opendeck] Slide render failed:', err))
 
     return () => controller.abort()
   }, [canvasRef, slide, scale, dpr, cache, limited, enabled, step])

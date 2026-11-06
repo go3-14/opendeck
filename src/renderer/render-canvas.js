@@ -97,7 +97,7 @@ export function loadImage(loadBlob) {
       return img;
     })
     .catch((err) => {
-      console.warn('[PPTX Viewer] Image failed to load:', err);
+      console.warn('[Opendeck] Image failed to load:', err);
       return null;
     });
   touch(loadBlob, entry);
@@ -771,7 +771,7 @@ function drawShapeDispatch(ctx, s, K) {
     }
   } catch (err) {
     // One bad shape must never take down the whole slide.
-    console.warn('[PPTX Viewer] Shape render error:', err, s);
+    console.warn('[Opendeck] Shape render error:', err, s);
   }
 }
 

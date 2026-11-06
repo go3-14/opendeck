@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PPTX Viewer",
-  "version": "1.0.0",
-  "description": "View PowerPoint presentations in your browser, with search and a full-screen slideshow. Files never leave your device.",
+  "name": "Opendeck",
+  "version": "1.1.0",
+  "description": "Free, open-source viewer for PowerPoint files, with search and a full-screen slideshow. Files never leave your device.",
   "homepage_url": "https://github.com/go3-14/pptx_viewer_extension",
   "minimum_chrome_version": "111",
   "icons": {

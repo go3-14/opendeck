@@ -54,7 +54,7 @@ const notes = {
 }
 
 const out = [
-  'PPTX Viewer includes the following third-party software. Each package is used under the licence shown.',
+  'Opendeck includes the following third-party software. Each package is used under the licence shown.',
   '',
   ...entries.map((e) => `- ${e.name} ${e.version}: ${e.license}`),
   '',

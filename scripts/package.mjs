@@ -1,10 +1,10 @@
 // Builds the extension and zips it for upload to the Chrome Web Store / Edge Add-ons.
 //
-//   npm run package        ->  release/pptx-viewer-<version>.zip
+//   npm run package        ->  release/opendeck-<version>.zip
 //
 // The zip holds the contents of dist/ with manifest.json at the top level.
 //
-//   npm run package:firefox  ->  release/pptx-viewer-firefox-<version>.zip
+//   npm run package:firefox  ->  release/opendeck-firefox-<version>.zip
 //
 // Same code, with a manifest adjusted for Firefox and Zen (event-page background
 // script instead of a service worker, an add-on id, no Chrome-only keys).
@@ -64,7 +64,7 @@ const zip = new JSZip()
 for (const f of files.sort()) {
   zip.file(f, f === 'manifest.json' && firefox ? JSON.stringify(manifest, null, 2) : fs.readFileSync(path.join(dist, f)))
 }
-const out = path.join(root, 'release', `pptx-viewer-${firefox ? 'firefox-' : ''}${manifest.version}.zip`)
+const out = path.join(root, 'release', `opendeck-${firefox ? 'firefox-' : ''}${manifest.version}.zip`)
 fs.mkdirSync(path.dirname(out), { recursive: true })
 fs.writeFileSync(out, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } }))
 

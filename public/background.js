@@ -1,4 +1,4 @@
-// background.js — PPTX Viewer Extension Service Worker
+// background.js — Opendeck Extension Service Worker
 
 'use strict';
 
@@ -31,7 +31,7 @@ function notifyNeedsAccess() {
   chrome.notifications.create('pptx-needs-access', {
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-    title: 'PPTX Viewer — one more step',
+    title: 'Opendeck — one more step',
     message: 'Click here to allow opening downloaded presentations in the viewer. The file downloads normally until then.',
     priority: 1,
   });
@@ -128,7 +128,7 @@ chrome.downloads.onChanged.addListener(async (delta) => {
     const [item] = await chrome.downloads.search({ id: delta.id });
     if (item && isPptx(item)) handlePptxDownload(item);
   } catch (err) {
-    console.error('[PPTX Viewer] Could not look up download:', err);
+    console.error('[Opendeck] Could not look up download:', err);
   }
 });
 
@@ -171,7 +171,7 @@ async function sweepStaleHandoffs() {
     });
     db.close();
   } catch (err) {
-    console.warn('[PPTX Viewer] Handoff sweep failed:', err);
+    console.warn('[Opendeck] Handoff sweep failed:', err);
   }
 }
 
@@ -204,7 +204,7 @@ async function handlePptxDownload(item) {
   if (!isFetchable(url)) {
     // blob:/data: URLs can't be re-fetched from the service worker.
     // Leave the native download untouched.
-    console.warn('[PPTX Viewer] Not intercepting download with an unsupported URL:', url);
+    console.warn('[Opendeck] Not intercepting download with an unsupported URL:', url);
     return;
   }
 
@@ -224,7 +224,7 @@ async function handlePptxDownload(item) {
       await chrome.downloads.cancel(item.id);
       await chrome.downloads.erase({ id: item.id });
     } catch (err) {
-      console.warn('[PPTX Viewer] Could not cancel native download:', err);
+      console.warn('[Opendeck] Could not cancel native download:', err);
     }
 
     await chrome.tabs.create({
@@ -232,11 +232,11 @@ async function handlePptxDownload(item) {
     });
   } catch (err) {
     // Native download keeps going, so the user is never left without the file.
-    console.error('[PPTX Viewer] Failed to intercept download:', err);
+    console.error('[Opendeck] Failed to intercept download:', err);
     chrome.notifications.create(`pptx-error-${item.id}`, {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-      title: 'PPTX Viewer — Could not open file',
+      title: 'Opendeck — Could not open file',
       message: /^file:/i.test(url)
         ? 'To open local files directly, turn on "Allow access to file URLs" for this extension. The file will download normally.'
         : 'The file will download normally. Open it later via the toolbar button.',
@@ -247,13 +247,13 @@ async function handlePptxDownload(item) {
   }
 }
 
-// ─── Right-click a link → "Open in PPTX Viewer" ───────────────────────────────
+// ─── Right-click a link → "Open in Opendeck" ───────────────────────────────
 const MENU_ID = 'open-in-viewer';
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: MENU_ID,
-    title: 'Open in PPTX Viewer',
+    title: 'Open in Opendeck',
     contexts: ['link'],
     targetUrlPatterns: PRESENTATION_EXTENSIONS.flatMap((ext) => [
       `*://*/*.${ext}`, `*://*/*.${ext}?*`, `file:///*.${ext}`,
@@ -274,11 +274,11 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
       url: `${VIEWER_URL}?mode=intercepted&handoff=${encodeURIComponent(handoffId)}`,
     });
   } catch (err) {
-    console.error('[PPTX Viewer] Could not open link:', err);
+    console.error('[Opendeck] Could not open link:', err);
     chrome.notifications.create(`pptx-link-error-${Date.now()}`, {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-      title: 'PPTX Viewer — Could not open link',
+      title: 'Opendeck — Could not open link',
       message: /^file:/i.test(url)
         ? 'Turn on "Allow access to file URLs" for this extension to open local files.'
         : 'The file could not be fetched.',
