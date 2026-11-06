@@ -3,6 +3,11 @@
 //   npm run package        ->  release/pptx-viewer-<version>.zip
 //
 // The zip holds the contents of dist/ with manifest.json at the top level.
+//
+//   npm run package:firefox  ->  release/pptx-viewer-firefox-<version>.zip
+//
+// Same code, with a manifest adjusted for Firefox and Zen (event-page background
+// script instead of a service worker, an add-on id, no Chrome-only keys).
 
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -16,7 +21,19 @@ const dist = path.join(root, 'dist')
 // Fresh production build (also type-checks).
 execSync('npm run build', { cwd: root, stdio: 'inherit' })
 
+const firefox = process.argv.includes('--firefox')
 const manifest = JSON.parse(fs.readFileSync(path.join(dist, 'manifest.json'), 'utf8'))
+if (firefox) {
+  delete manifest.minimum_chrome_version
+  manifest.background = { scripts: [manifest.background.service_worker] }
+  manifest.browser_specific_settings = {
+    gecko: {
+      id: 'pptx-viewer@go3-14.github.io',
+      strict_min_version: '140.0',
+      data_collection_permissions: { required: ['none'] },
+    },
+  }
+}
 
 /** Every file under a folder, as paths relative to it (forward slashes). */
 function walk(dir, base = dir) {
@@ -44,8 +61,10 @@ if (problems.length) {
 
 // ─── Zip ──────────────────────────────────────────────────────────────────────
 const zip = new JSZip()
-for (const f of files.sort()) zip.file(f, fs.readFileSync(path.join(dist, f)))
-const out = path.join(root, 'release', `pptx-viewer-${manifest.version}.zip`)
+for (const f of files.sort()) {
+  zip.file(f, f === 'manifest.json' && firefox ? JSON.stringify(manifest, null, 2) : fs.readFileSync(path.join(dist, f)))
+}
+const out = path.join(root, 'release', `pptx-viewer-${firefox ? 'firefox-' : ''}${manifest.version}.zip`)
 fs.mkdirSync(path.dirname(out), { recursive: true })
 fs.writeFileSync(out, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } }))
 

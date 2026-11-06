@@ -11,7 +11,8 @@
     "icons": "node scripts/make-icons.mjs",
     "licenses": "node scripts/third-party-licenses.mjs",
     "screenshots": "node scripts/make-screenshots.mjs",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "package:firefox": "node scripts/package.mjs --firefox"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

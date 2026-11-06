@@ -60,6 +60,10 @@ See [PRIVACY.md](PRIVACY.md) for exactly what is processed, stored and requested
 
 Browsers do not update extensions installed this way; download the new zip and reload it from the extensions page. Chrome may show a "disable developer mode extensions" reminder on start-up.
 
+### Firefox and Zen
+
+Use the signed `.xpi` from the Releases page, or the listing on addons.mozilla.org once published. Requires Firefox 140 or newer; build it yourself with `npm run package:firefox`.
+
 ### From source
 
 Requirements: Node 20 or newer, and Chrome or Edge.

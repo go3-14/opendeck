@@ -72,3 +72,17 @@ Same zip. Create a new extension in the Partner Center, upload the package, reus
 ## Updating later
 
 Bump the version, repeat the checks, run `npm run package`, then upload the new zip as a new package of the same item. Chrome updates installed copies automatically (usually within hours). If an update adds a permission, Chrome asks existing users to approve it, so avoid new permissions unless needed.
+
+## Firefox and Zen
+
+Firefox and Zen use the same code with a different manifest (event-page background script, add-on id, no Chrome-only keys). `npm run package:firefox` writes `release/pptx-viewer-firefox-<version>.zip`.
+
+1. Sign in at <https://addons.mozilla.org/developers/> (free Firefox account).
+2. **Submit a New Add-on**, upload the Firefox zip, and pick how to distribute it:
+   - **On this site** (public listing, reviewed in a few days). Zen users can install it from the listing.
+   - **On your own** (unlisted). Mozilla signs it within minutes and gives you an `.xpi` to attach to the GitHub release. Firefox and Zen only install signed files.
+3. When asked for source code, upload a zip of the repository (or link it) and point to the README's build steps (`npm install`, `npm run build`). The bundled React and JSZip code triggers the automatic "innerHTML" and "Function constructor" warnings; that is expected.
+4. Listing text, screenshots and privacy policy URL are the same as for Chrome. Data collection is declared as "none" in the manifest.
+5. Test before submitting: in Firefox open `about:debugging`, choose This Firefox, **Load Temporary Add-on**, and select the unzipped `manifest.json`. Run the manual checks above. Downloads interception and the permission prompt behave slightly differently in Firefox, so check them there.
+
+Requires Firefox 140 or newer.
