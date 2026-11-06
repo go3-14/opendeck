@@ -81,7 +81,10 @@ function quadrantPng() {
 
 /** Large tinted-noise PNG: slow to read and decode, so progressive painting is easy to observe. */
 function noisyPng(w, h, [r, g, b]) {
-  const noise = crypto.randomBytes(w * h * 3);
+  // Seeded generator (mulberry32) so the picture is identical on every run: the visual tests compare pixels.
+  let seed = (w * 31 + h * 17 + r * 7 + g * 3 + b) >>> 0;
+  const rand = () => { seed = (seed + 0x6d2b79f5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const noise = Uint8Array.from({ length: w * h * 3 }, () => (rand() * 256) | 0);
   const raw = Buffer.alloc(h * (w * 3 + 1));
   const base = [r, g, b];
   for (let y = 0; y < h; y++) {

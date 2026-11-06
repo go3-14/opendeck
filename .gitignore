@@ -50,3 +50,6 @@ logs/
 # Planning / design documents (not part of the extension)
 *-plan.md
 implementation_plan.md
+
+# Test output
+tests/output/
