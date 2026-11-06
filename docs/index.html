@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Opendeck: free, open-source PowerPoint viewer for your browser</title>
+  <meta name="description" content="View PowerPoint presentations in Chrome, Edge, Firefox and Zen, with search and a full-screen slideshow. Free, open source, and your files never leave your device." />
+  <link rel="icon" href="favicon.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site">
+    <div class="wrap">
+      <a class="brand" href="#top"><img src="img/icon48.png" alt="" />Opendeck</a>
+      <nav class="site">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#support" class="keep">Support</a>
+        <a href="https://github.com/go3-14/pptx_viewer_extension" class="keep">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="wrap hero">
+      <h1>PowerPoint files, right in your browser.</h1>
+      <p class="lead">Opendeck is a free, open-source viewer with search and a full-screen slideshow. No upload, no account, no server. Your files stay on your device.</p>
+
+      <div class="actions">
+        <!-- Replace each "Coming soon" with a real link as soon as the store listing is live. -->
+        <span class="btn" aria-disabled="true">Firefox <small>coming soon</small></span>
+        <span class="btn" aria-disabled="true">Chrome <small>coming soon</small></span>
+        <span class="btn" aria-disabled="true">Edge <small>coming soon</small></span>
+        <a class="btn primary" href="https://github.com/go3-14/pptx_viewer_extension/releases/latest">Download from GitHub</a>
+      </div>
+      <p class="fine">Works in Chrome, Edge, Firefox and Zen. Free, MIT licence.</p>
+
+      <div class="hero-shot shot">
+        <picture>
+          <source srcset="img/4-dark.jpg" media="(prefers-color-scheme: dark)" />
+          <img src="img/1-view.jpg" width="1280" height="800" alt="Opendeck showing a slide with a chart next to the slide list" />
+        </picture>
+      </div>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>Everything you need to read and present a deck</h2>
+        <p class="sub">Open a presentation, find what you need, and present it, without installing Office.</p>
+
+        <div class="grid three">
+          <figure class="card" style="margin:0">
+            <div class="shot"><img src="img/2-search.jpg" width="1280" height="800" loading="lazy" alt="Search results highlighted in the slide list" /></div>
+            <h3>Search everything</h3>
+            <p>Slide text, tables and speaker notes. Matching slides are marked in the list.</p>
+          </figure>
+          <figure class="card" style="margin:0">
+            <div class="shot"><img src="img/5-speaker-view.jpg" width="1280" height="800" loading="lazy" alt="Speaker view with notes, next slide and a timer" /></div>
+            <h3>Present with notes</h3>
+            <p>Full-screen slideshow that plays animation builds and transitions, with a speaker view.</p>
+          </figure>
+          <figure class="card" style="margin:0">
+            <div class="shot"><img src="img/3-more-menu.jpg" width="1280" height="800" loading="lazy" alt="More menu with copy, print and export options" /></div>
+            <h3>Take the content with you</h3>
+            <p>Copy a slide as an image or text, copy an outline, print or save as PDF, export PNGs.</p>
+          </figure>
+        </div>
+
+        <ul class="features">
+          <li><strong>Several ways to open files</strong><span>Toolbar icon, drag and drop, recent files, or links you right-click. Optionally, downloads open straight in the viewer.</span></li>
+          <li><strong>Light and dark</strong><span>Follows your system theme. Slides fit your window, or zoom in.</span></li>
+          <li><strong>Draws what is in the file</strong><span>Master and layout styles, shapes, pictures, tables, charts and SmartArt. Content it cannot draw is clearly marked.</span></li>
+          <li><strong>Presenter tools</strong><span>Laser pointer, pen, slide grid, black and white screens, and jump to any slide.</span></li>
+          <li><strong>Many formats</strong><span><code>.pptx</code>, <code>.ppsx</code>, <code>.potx</code> and the macro-enabled variants.</span></li>
+          <li><strong>Open source</strong><span>MIT licensed, built in the open. Read the code, report problems, send fixes.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <h2>How it works</h2>
+        <p class="sub">A presentation file is a zip of XML. Opendeck unpacks it and draws every slide itself, inside your browser.</p>
+
+        <ol class="steps">
+          <li><h3>Open a file</h3><p>Click the toolbar icon, choose a file or drop one on the page. Nothing is sent anywhere.</p></li>
+          <li><h3>Look around</h3><p>Browse slides, search, zoom, or switch the theme. Slides are drawn on demand, so large decks stay quick.</p></li>
+          <li><h3>Present or reuse</h3><p>Start the slideshow with F5, or copy, print and export what you need.</p></li>
+        </ol>
+
+        <figure class="diagram">
+          <svg viewBox="0 0 760 150" role="img" aria-label="Your file is read and drawn inside your browser. Nothing leaves your device.">
+            <g fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="10" y="40" width="150" height="70" rx="10" />
+              <rect x="230" y="14" width="320" height="122" rx="10" stroke-dasharray="5 5" />
+              <rect x="250" y="44" width="86" height="62" rx="8" />
+              <rect x="352" y="44" width="86" height="62" rx="8" />
+              <rect x="454" y="44" width="86" height="62" rx="8" />
+              <rect x="610" y="40" width="140" height="70" rx="10" />
+              <path d="M160 75h70M550 75h60" />
+              <path d="M222 69l8 6-8 6M602 69l8 6-8 6" />
+            </g>
+            <g fill="currentColor" font-family="Geist, system-ui, sans-serif" font-size="14" text-anchor="middle">
+              <text x="85" y="80">.pptx file</text>
+              <text x="293" y="80">Unzip</text>
+              <text x="395" y="80">Read</text>
+              <text x="497" y="80">Draw</text>
+              <text x="680" y="80">Slides</text>
+              <text x="390" y="130" font-size="12" opacity="0.7">inside your browser</text>
+            </g>
+          </svg>
+          <figcaption>There is no server in this picture. That is the point.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <div class="wrap">
+        <h2>Private by design</h2>
+        <p class="sub">The short version. The full policy is in <a href="https://github.com/go3-14/pptx_viewer_extension/blob/master/PRIVACY.md">PRIVACY.md</a>.</p>
+        <ul class="checks">
+          <li>Presentations are read and drawn on your device. No uploads, no analytics, no tracking.</li>
+          <li>Access to websites is optional and off until you turn it on in Settings. It is used only to fetch the file you just downloaded or right-clicked, and you can remove it at any time.</li>
+          <li>Recent files are kept in your browser only, and Settings can clear them.</li>
+          <li>This site loads no third-party scripts, fonts or trackers.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="support">
+      <div class="wrap">
+        <h2>Support</h2>
+        <p class="sub">Something looks wrong, or you have an idea? Open an issue on GitHub. It takes a minute, and everyone can see the answer.</p>
+        <div class="actions" style="justify-content:flex-start">
+          <a class="btn primary" href="https://github.com/go3-14/pptx_viewer_extension/issues/new?template=bug.yml">Report a problem</a>
+          <a class="btn" href="https://github.com/go3-14/pptx_viewer_extension/issues/new?template=feature.yml">Suggest a feature</a>
+          <a class="btn" href="https://github.com/go3-14/pptx_viewer_extension/issues">Browse open issues</a>
+        </div>
+        <p class="fine">You need a free GitHub account. Please do not attach private presentations; a small example that shows the problem is enough.</p>
+
+        <div id="faq" style="margin-top:2.5rem">
+          <details>
+            <summary>A slide looks different from PowerPoint.</summary>
+            <p>Opendeck draws slides itself from the file, so very unusual effects can differ. Open an issue with a small example and what you expected. Content it cannot draw is marked on the slide instead of silently dropped.</p>
+          </details>
+          <details>
+            <summary>Why did downloads not open in the viewer?</summary>
+            <p>That feature is optional. Open the extension's Settings and turn on <strong>Open downloads and links here</strong>. Your browser then asks for access to websites, which is only used to read the file you just downloaded.</p>
+          </details>
+          <details>
+            <summary>How do I open a file from my computer by double-clicking?</summary>
+            <p>Turn on <strong>Allow access to file URLs</strong> for Opendeck on the browser's extensions page. Browsers keep that switch separate and extensions cannot turn it on for you.</p>
+          </details>
+          <details>
+            <summary>Does it edit presentations?</summary>
+            <p>No. Opendeck is a viewer: open, search, present, copy, print and export. Your files are never changed.</p>
+          </details>
+          <details>
+            <summary>Is it really free?</summary>
+            <p>Yes. It is open source under the MIT licence, with no ads, no accounts and no paid tier.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site">
+    <div class="wrap">
+      <div class="links">
+        <a href="https://github.com/go3-14/pptx_viewer_extension">Source on GitHub</a>
+        <a href="https://github.com/go3-14/pptx_viewer_extension/blob/master/PRIVACY.md">Privacy policy</a>
+        <a href="https://github.com/go3-14/pptx_viewer_extension/blob/master/LICENSE">MIT licence</a>
+        <a href="https://github.com/go3-14/pptx_viewer_extension/releases">Releases</a>
+      </div>
+      <div>PowerPoint is a trademark of Microsoft Corporation. Opendeck is an independent project and is not affiliated with or endorsed by Microsoft.</div>
+    </div>
+  </footer>
+</body>
+</html>

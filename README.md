@@ -8,6 +8,8 @@ A Chrome / Edge extension that opens PowerPoint presentations in the browser, wi
 
 See [PRIVACY.md](PRIVACY.md) for exactly what is processed, stored and requested.
 
+**Website:** <https://go3-14.github.io/pptx_viewer_extension/> (once GitHub Pages is on). **Problems or ideas:** [open an issue](https://github.com/go3-14/pptx_viewer_extension/issues/new/choose).
+
 ## Contents
 
 1. [Features](#features)

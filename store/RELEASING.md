@@ -86,3 +86,7 @@ Firefox and Zen use the same code with a different manifest (event-page backgrou
 5. Test before submitting: in Firefox open `about:debugging`, choose This Firefox, **Load Temporary Add-on**, and select the unzipped `manifest.json`. Run the manual checks above. Downloads interception and the permission prompt behave slightly differently in Firefox, so check them there.
 
 Requires Firefox 140 or newer.
+
+## Website
+
+The site in `docs/` is plain HTML and CSS, served by GitHub Pages (Settings → Pages → Deploy from branch → `master` → `/docs`). Once a store listing is live, replace its "coming soon" button in `docs/index.html` with the real link, and put the site URL in the store's homepage field. Support requests go to GitHub Issues through the forms in `.github/ISSUE_TEMPLATE/`.
