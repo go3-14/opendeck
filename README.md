@@ -347,6 +347,19 @@ npm run test:visual -- --update  # accept the current rendering as the new refer
 
 `tests/visual.mjs` renders each slide of the fixture deck and of the sample deck in `store/sample/` in real Chrome and compares the canvas pixels with `tests/baseline/<platform>/` (using `pixelmatch`). A slide fails when more than 1% of its pixels differ, and a diff image is written to `tests/output/diff/`. References are kept per operating system because fonts differ. GitHub Actions (`.github/workflows/ci.yml`) runs the build, both test suites, the site build and the packaging on every push.
 
+### Performance
+
+`npm run bench` measures, in real Chrome, how long it takes from choosing a file until the slide list appears and until the first slide is drawn (median of several runs). Results on the development laptop (Windows, headless Chrome):
+
+| Deck | Slides | Size | Slide list | First slide |
+| --- | --- | --- | --- | --- |
+| Sample deck | 6 | 0.3 MB | 0.27 s | 0.30 s |
+| Fixture with four large noisy pictures | 8 | 24 MB | 0.35 s | 0.41 s |
+| Generated stress deck | 300 | 0.3 MB | 0.69 s | 0.71 s |
+| 19 real lecture and project decks | 1 to 36 | 0.1 to 34 MB | 0.17 to 0.65 s | 0.23 to 0.90 s |
+
+Slides are drawn on demand and thumbnails are drawn only when scrolled into view, so loading stays quick even for long decks. A move to a Web Worker was considered and rejected: the numbers do not justify it, and the XML parser (`DOMParser`) is not available in workers.
+
 ## Releasing
 
 Store listing text, images and the release checklist live in [`store/`](store): [LISTING.md](store/LISTING.md) and [RELEASING.md](store/RELEASING.md). `npm run package` builds the upload zip.
