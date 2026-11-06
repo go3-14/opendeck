@@ -338,6 +338,15 @@ npm test -- path/to/decks    # also open every .pptx/.ppsx in a folder, or singl
 
 `npm test` runs the built viewer in a real Chrome (via `playwright-core`; set `CHROME_PATH` if Chrome is not in a standard location). It generates a deck that exercises inheritance, groups, crops, colour maps, tables, SmartArt, freeforms, shadows, charts, notes and animations; checks pixels on the canvas, search, the slideshow, the speaker view and recent files; and fails on any console error. With extra paths it opens each deck and checks that every slide draws. See [tests/README.md](tests/README.md) for the deck contents. Extension-only behaviour (downloads, the link menu, the permission prompt) is checked by hand in the built extension.
 
+### Visual regression
+
+```bash
+npm run test:visual              # compare every slide with the stored reference image
+npm run test:visual -- --update  # accept the current rendering as the new reference
+```
+
+`tests/visual.mjs` renders each slide of the fixture deck and of the sample deck in `store/sample/` in real Chrome and compares the canvas pixels with `tests/baseline/<platform>/` (using `pixelmatch`). A slide fails when more than 1% of its pixels differ, and a diff image is written to `tests/output/diff/`. References are kept per operating system because fonts differ. GitHub Actions (`.github/workflows/ci.yml`) runs the build, both test suites, the site build and the packaging on every push.
+
 ## Releasing
 
 Store listing text, images and the release checklist live in [`store/`](store): [LISTING.md](store/LISTING.md) and [RELEASING.md](store/RELEASING.md). `npm run package` builds the upload zip.
