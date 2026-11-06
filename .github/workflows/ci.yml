@@ -29,10 +29,9 @@ jobs:
       - name: Visual regression test
         env:
           CHROME_PATH: /usr/bin/google-chrome
-        # No Linux reference images exist until the first run; --allow-missing passes and
-        # uploads the new images (artifact "visual-output") so they can be committed to
-        # tests/baseline/linux/. After that, drop the flag to make differences fail the build.
-        run: npm run test:visual -- --allow-missing
+        # Reference images for Linux are in tests/baseline/linux/. If a rendering change is
+        # intended, download the "visual-output" artifact or run the test with --update on Linux.
+        run: npm run test:visual
 
       - name: Upload visual test output
         if: always()
