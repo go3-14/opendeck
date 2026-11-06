@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Build the extension (type-check + bundle)
+        run: npm run build
+
+      - name: Smoke test in Chrome
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm test
+
+      - name: Build the website
+        run: npm run site:build
+
+      - name: Package for the stores
+        run: |
+          npm run package
+          npm run package:firefox

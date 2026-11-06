@@ -1,5 +1,7 @@
 # Opendeck
 
+[![CI](https://github.com/go3-14/pptx_viewer_extension/actions/workflows/ci.yml/badge.svg)](https://github.com/go3-14/pptx_viewer_extension/actions/workflows/ci.yml)
+
 A Chrome, Edge, Firefox and Zen extension that opens PowerPoint presentations in the browser, with search, printing and a full-screen slideshow that plays animations. It works on your device: files are parsed and drawn locally, with no server, no upload and no tracking.
 
 - Opens `.pptx`, `.ppsx`, `.potx` and the macro-enabled variants (`.pptm`, `.ppsm`, `.potm`).
