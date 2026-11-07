@@ -10,7 +10,7 @@ export function SlideCanvas({ slide, zoom }: { slide: Slide; zoom: number }) {
   return (
     <canvas
       ref={ref}
-      className="block border bg-white"
+      className="block border bg-white dark:bg-neutral-900"
       style={{ width: slide.width * zoom, height: slide.height * zoom }}
       aria-label="Current slide"
     />
@@ -46,7 +46,7 @@ export function SlidePreview({ slide, width, className }: { slide: Slide; width:
   return (
     <canvas
       ref={ref}
-      className={cn('block border bg-white', className)}
+      className={cn('block border bg-white dark:bg-neutral-900', className)}
       style={{ width, height: (width * slide.height) / slide.width }}
     />
   )

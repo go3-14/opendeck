@@ -21,7 +21,7 @@ function clamp255(v) {
   return Math.max(0, Math.min(255, Math.round(v)));
 }
 
-function rgbToHsl(r, g, b) {
+export function rgbToHsl(r, g, b) {
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
@@ -38,7 +38,7 @@ function rgbToHsl(r, g, b) {
   return [h, s, l];
 }
 
-function hslToRgb(h, s, l) {
+export function hslToRgb(h, s, l) {
   if (s === 0) {
     const v = Math.round(l * 255);
     return [v, v, v];

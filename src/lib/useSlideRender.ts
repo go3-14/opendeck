@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { renderSlide } from '@/renderer/render-canvas.js'
 import type { Slide } from './pptx'
 import { thumbnailLimiter } from './renderQueue'
+import { useInvert } from './theme'
 
 interface Options {
   /** Keep the finished slide so showing it again is instant (main canvas). */
@@ -30,6 +31,8 @@ export function useSlideRender(
   dpr?: number,
   { cache = false, limited = false, enabled = true, step, onDrawn }: Options = {},
 ) {
+  // Dark mode: draw with inverted colours (the canvas redraws when the setting changes).
+  const invert = useInvert()
   // Latest callback without re-running the render effect when it changes.
   const onDrawnRef = useRef(onDrawn)
   onDrawnRef.current = onDrawn
@@ -42,7 +45,7 @@ export function useSlideRender(
     const task = () =>
       controller.signal.aborted
         ? Promise.resolve(false)
-        : renderSlide(slide, canvas, scale, dpr, { signal: controller.signal, cache, step }).then((drawn: boolean) => {
+        : renderSlide(slide, canvas, scale, dpr, { signal: controller.signal, cache, step, invert }).then((drawn: boolean) => {
             if (drawn) onDrawnRef.current?.()
             return drawn
           })
@@ -51,5 +54,5 @@ export function useSlideRender(
     run.catch((err: unknown) => console.warn('[Opendeck] Slide render failed:', err))
 
     return () => controller.abort()
-  }, [canvasRef, slide, scale, dpr, cache, limited, enabled, step])
+  }, [canvasRef, slide, scale, dpr, cache, limited, enabled, step, invert])
 }

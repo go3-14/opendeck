@@ -9,6 +9,7 @@
 
 import { drawFallbackBadge } from './fallback-notice.js';
 import { drawChart } from './render-chart.js';
+import { wrapContext } from './dark.js';
 
 const LINE_HEIGHT = 1.2; // line box = font size × 1.2 (typical for Calibri/Arial)
 const DESCENT = 0.25; // baseline sits this many em above the line box bottom
@@ -804,13 +805,13 @@ const renderCache = new Map(); // key → finished off-screen canvas (insertion 
 const slideIds = new WeakMap();
 let nextSlideId = 1;
 
-function cacheKey(slide, scale, dpr, step) {
+function cacheKey(slide, scale, dpr, step, invert) {
   if (!slideIds.has(slide)) slideIds.set(slide, nextSlideId++);
-  return `${slideIds.get(slide)}|${scale}|${dpr}|${step ?? 'all'}`;
+  return `${slideIds.get(slide)}|${scale}|${dpr}|${step ?? 'all'}|${invert ? 'dark' : 'light'}`;
 }
 
 /** Draws a whole slide into a new off-screen canvas. Synchronous: images must be preloaded. */
-function drawSlideOffscreen(slide, scale, dpr, step) {
+function drawSlideOffscreen(slide, scale, dpr, step, invert) {
   const { width, height, background, shapes } = slide;
   const cssW = width * scale;
   const cssH = height * scale;
@@ -821,9 +822,10 @@ function drawSlideOffscreen(slide, scale, dpr, step) {
   const off = document.createElement('canvas');
   off.width = Math.round(cssW * dpr);
   off.height = Math.round(cssH * dpr);
-  const ctx = off.getContext('2d');
-  if (!ctx) throw new Error('2D canvas context is unavailable');
-  ctx.scale(dpr, dpr); // all drawing below is in CSS pixels
+  const raw = off.getContext('2d');
+  if (!raw) throw new Error('2D canvas context is unavailable');
+  raw.scale(dpr, dpr); // all drawing below is in CSS pixels
+  const ctx = invert ? wrapContext(raw) : raw; // dark mode: colours are inverted as they are set
 
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, cssW, cssH);
@@ -867,15 +869,16 @@ function commit(canvas, off, scale, slide) {
  * @param {HTMLCanvasElement} canvas
  * @param {number} scale  CSS pixels per point (1 = 1pt = 1px)
  * @param {number} [dpr]  defaults to window.devicePixelRatio
- * @param {{ signal?: AbortSignal, cache?: boolean, step?: number }} [options]
+ * @param {{ signal?: AbortSignal, cache?: boolean, step?: number, invert?: boolean }} [options]
  *        signal: abandon the render (canvas untouched) if aborted;
  *        cache: keep the finished slide so showing it again is instant;
  *        step: draw the slide after this many animation clicks (0 = as it first
- *        appears); omit to draw every shape, as a static view does
+ *        appears); omit to draw every shape, as a static view does;
+ *        invert: dark mode, draw with inverted colours (pictures are left alone)
  * @returns {Promise<boolean>} true if the canvas was updated, false if aborted
  */
 export async function renderSlide(
-  slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1, { signal, cache = false, step } = {},
+  slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1, { signal, cache = false, step, invert = false } = {},
 ) {
   const { width, height } = slideModel;
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -885,14 +888,14 @@ export async function renderSlide(
     throw new Error(`Invalid canvas scale: ${scale} (DPR ${dpr})`);
   }
 
-  const key = cache ? cacheKey(slideModel, scale, dpr, step) : null;
+  const key = cache ? cacheKey(slideModel, scale, dpr, step, invert) : null;
   let off = key ? renderCache.get(key) : null;
 
   if (!off) {
     if (signal?.aborted) return false;
     await preloadSlideImages(slideModel);
     if (signal?.aborted) return false;
-    off = drawSlideOffscreen(slideModel, scale, dpr, step);
+    off = drawSlideOffscreen(slideModel, scale, dpr, step, invert);
     if (key) {
       renderCache.set(key, off);
       while (renderCache.size > RENDER_CACHE_LIMIT) renderCache.delete(renderCache.keys().next().value);
