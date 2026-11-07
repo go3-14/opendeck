@@ -257,7 +257,7 @@ try {
   }
   check('dark: app theme follows the system', await page.evaluate(() => document.documentElement.classList.contains('dark')))
   await slide(1)
-  const bg = await pixel(page, 700, 150)
+  const bg = await pixel(page, 900, 300)
   check('dark: a white slide background is drawn dark', bg.every((v) => v < 45), `got ${bg}`)
   const text = await countColour(page, [60, 120, 700, 200], [235, 235, 235], 40)
   check('dark: slide text is drawn light', text > 50, `light pixels: ${text}`)
@@ -273,7 +273,7 @@ try {
   await page.keyboard.press('Escape')
   await settle(page)
   await page.waitForTimeout(300)
-  check('dark: turning inversion off restores the authored colours', near(await pixel(page, 700, 150), [255, 255, 255], 6))
+  check('dark: turning inversion off restores the authored colours', near(await pixel(page, 900, 300), [255, 255, 255], 6))
 
   await page.click('button[aria-label^="Theme"]')
   check('theme button switches away from auto', !(await page.getAttribute('button[aria-label^="Theme"]', 'aria-label')).includes('auto'))
