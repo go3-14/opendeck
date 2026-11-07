@@ -11,9 +11,9 @@ Everything to paste into the Chrome Web Store developer dashboard (and Microsoft
 | Category | Productivity |
 | Language | English |
 | Icon | `public/icons/icon128.png` (also in the zip) |
-| Homepage URL | https://github.com/go3-14/pptx_viewer_extension |
-| Support URL | https://github.com/go3-14/pptx_viewer_extension/issues |
-| Privacy policy URL | https://github.com/go3-14/pptx_viewer_extension/blob/master/PRIVACY.md |
+| Homepage URL | https://github.com/go3-14/opendeck |
+| Support URL | https://github.com/go3-14/opendeck/issues |
+| Privacy policy URL | https://github.com/go3-14/opendeck/blob/master/PRIVACY.md |
 
 ## Description
 
@@ -52,7 +52,7 @@ PRIVATE BY DESIGN
 • Access to websites is optional and off until you turn it on in Settings; it is used only to read the file you just downloaded or right-clicked
 • Recent files stay in your browser and can be cleared at any time
 
-Open source (MIT): https://github.com/go3-14/pptx_viewer_extension
+Open source (MIT): https://github.com/go3-14/opendeck
 
 PowerPoint is a trademark of Microsoft Corporation. Opendeck is an independent project and is not affiliated with or endorsed by Microsoft.
 ```
@@ -80,7 +80,7 @@ PowerPoint is a trademark of Microsoft Corporation. Opendeck is an independent p
 No account or login is needed.
 
 1. Install and open the extension: a Settings page opens on first install. (Optional features need the "Turn on" button there; everything else works without it.)
-2. Click the toolbar icon, choose "Choose file", and select store/sample/Quarterly Business Review.pptx from the source repository (https://github.com/go3-14/pptx_viewer_extension/tree/master/store/sample), or any .pptx file.
+2. Click the toolbar icon, choose "Choose file", and select store/sample/Quarterly Business Review.pptx from the source repository (https://github.com/go3-14/opendeck/tree/master/store/sample), or any .pptx file.
 3. Use the slide list, Search (Ctrl+F, try "growth"), and the More menu (copy, print, export).
 4. Click Present (or press F5) for the slideshow; press S for the speaker view, ? for all shortcuts, Esc to leave.
 5. Optional feature: in Settings press "Turn on", then click a link to any .pptx file on the web; it opens in the viewer instead of downloading. Right-clicking such a link also offers "Open in Opendeck".
