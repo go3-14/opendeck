@@ -195,6 +195,40 @@ try {
   check('speaker view shows notes', (await page.locator('aside[aria-label="Speaker view"]').innerText()).includes('First note line'))
   await page.keyboard.press('Escape')
 
+  // Mouse wheel: changes slides in the viewer (Ctrl+wheel still zooms) and in the slideshow
+  await slide(6)
+  await page.mouse.move(700, 500)
+  const counter = async () => (await page.locator('header').innerText()).match(/(\d+) \/ 8/)?.[0]
+  await page.mouse.wheel(0, 120)
+  await page.waitForTimeout(150)
+  check('wheel down moves to the next slide', (await counter()) === '7 / 8', String(await counter()))
+  await page.waitForTimeout(450)
+  await page.mouse.wheel(0, -120)
+  await page.waitForTimeout(150)
+  check('wheel up moves to the previous slide', (await counter()) === '6 / 8', String(await counter()))
+  await page.waitForTimeout(450)
+  const zoomText = async () => (await page.locator('header').innerText()).match(/(\d+)%/)?.[1]
+  const zoomBefore = await zoomText()
+  await page.keyboard.down('Control')
+  await page.mouse.wheel(0, -120)
+  await page.keyboard.up('Control')
+  await page.waitForTimeout(200)
+  check('Ctrl+wheel zooms instead of changing slides', (await zoomText()) !== zoomBefore && (await counter()) === '6 / 8')
+  await page.keyboard.press('0') // back to fit
+
+  await page.click('button:has-text("Present")')
+  await page.waitForSelector(show)
+  await settle(page, show)
+  await page.mouse.move(700, 400)
+  await page.mouse.wheel(0, 120)
+  await settle(page, show)
+  check('slideshow: wheel down plays the next build', near(await pixel(page, ...redPlace, show), [255, 0, 0], 20))
+  await page.waitForTimeout(450)
+  await page.mouse.wheel(0, -120)
+  await settle(page, show)
+  check('slideshow: wheel up goes back a build', await isBlank())
+  await page.keyboard.press('Escape')
+
   // Recent files are listed after reload
   await page.goto(base)
   await page.waitForSelector('section[aria-label="Recent files"] li')
@@ -204,6 +238,45 @@ try {
   await page.close()
 } catch (err) {
   check('fixture deck run', false, err.message)
+}
+
+// ─── 1b. Dark mode: slides are colour-inverted, pictures are not ──────────────
+
+try {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme: 'dark' })
+  const problems = watch(page)
+  await openDeck(page, fixture)
+  await page.waitForSelector('[aria-label="Slide 8"]')
+  const slide = async (n) => {
+    await page.click(`[aria-label="Slide ${n}"]`)
+    await settle(page)
+  }
+  check('dark: app theme follows the system', await page.evaluate(() => document.documentElement.classList.contains('dark')))
+  await slide(1)
+  const bg = await pixel(page, 700, 150)
+  check('dark: a white slide background is drawn dark', bg.every((v) => v < 45), `got ${bg}`)
+  const text = await countColour(page, [60, 120, 700, 200], [235, 235, 235], 40)
+  check('dark: slide text is drawn light', text > 50, `light pixels: ${text}`)
+  await slide(3)
+  check('dark: pictures keep their colours', near(await pixel(page, 180, 237), [255, 0, 0], 30))
+  await slide(4)
+  const dk = await pixel(page, 10, 200)
+  check('dark: a dark slide background becomes light', dk.every((v) => v > 190), `got ${dk}`)
+
+  await slide(1)
+  await page.click('button[aria-label="More actions"]')
+  await page.click('text=Invert slides in dark mode')
+  await page.keyboard.press('Escape')
+  await settle(page)
+  await page.waitForTimeout(300)
+  check('dark: turning inversion off restores the authored colours', near(await pixel(page, 700, 150), [255, 255, 255], 6))
+
+  await page.click('button[aria-label^="Theme"]')
+  check('theme button switches away from auto', !(await page.getAttribute('button[aria-label^="Theme"]', 'aria-label')).includes('auto'))
+  check('dark mode: no console errors', problems.length === 0, problems.join(' | '))
+  await page.close()
+} catch (err) {
+  check('dark mode checks ran', false, String(err))
 }
 
 // ─── 2. Optional: your own decks (every deck must open and draw every slide) ──
