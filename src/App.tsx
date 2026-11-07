@@ -22,6 +22,7 @@ import { exportSlidesAsZip, loadPptx, type Slide } from '@/lib/pptx'
 import { slideToJpegUrl, slideToPng } from '@/lib/slideImage'
 import { outline, searchSlides, slideText } from '@/lib/slideText'
 import { nextTheme, setInvertSlides, setTheme, useTheme } from '@/lib/theme'
+import { createWheelNav } from '@/lib/wheelNav'
 import { addRecent, clearRecent, listRecent, loadRecent, type RecentEntry } from '@/lib/recent'
 import { cn } from '@/lib/utils'
 
@@ -163,6 +164,34 @@ export default function App() {
       setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round((effectiveZoom + delta) * 100) / 100))),
     [effectiveZoom],
   )
+
+  // Mouse wheel: Ctrl/Cmd + wheel zooms; otherwise it changes slides when the slide fits the
+  // window, and scrolls the slide (changing slides only at its edge) when it is zoomed in.
+  const wheelNav = useRef(createWheelNav())
+  const indexNow = useRef(index)
+  indexNow.current = index
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el || status !== 'ready') return
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        changeZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)
+        return
+      }
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return // sideways scrolling is left alone
+      const overflowing = el.scrollHeight > el.clientHeight + 1
+      if (overflowing) {
+        const atEdge = e.deltaY > 0 ? el.scrollTop + el.clientHeight >= el.scrollHeight - 1 : el.scrollTop <= 0
+        if (!atEdge) return
+      }
+      e.preventDefault()
+      const step = wheelNav.current(e.deltaY)
+      if (step) go(indexNow.current + step)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [status, showThumbs, go, changeZoom])
 
   // Keep the neighbouring slides' images decoded so paging is instant.
   useEffect(() => {
@@ -525,9 +554,6 @@ export default function App() {
         <main
           ref={mainRef}
           className="flex min-w-0 flex-1 overflow-auto bg-muted p-6"
-          onWheel={(e) => {
-            if (e.ctrlKey || e.metaKey) changeZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)
-          }}
         >
           <div className="m-auto">
             <SlideCanvas slide={current} zoom={effectiveZoom} />

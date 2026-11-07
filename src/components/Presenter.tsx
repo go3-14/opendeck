@@ -4,6 +4,7 @@ import type { Slide } from '@/lib/pptx'
 import { playTransition, prefersReducedMotion, snapshotCanvas } from '@/lib/transitions'
 import { useSlideRender } from '@/lib/useSlideRender'
 import { cn } from '@/lib/utils'
+import { createWheelNav } from '@/lib/wheelNav'
 import { animationStepCount } from '@/renderer/render-canvas.js'
 
 interface Props {
@@ -24,7 +25,7 @@ const GOTO_TIMEOUT_MS = 3000
 const PEN_COLOR = '#ef4444'
 
 const SHORTCUTS: Array<[string, string]> = [
-  ['→ ↓ Space Enter Click', 'Next build / slide'],
+  ['→ ↓ Space Enter Click Wheel down', 'Next build / slide'],
   ['← ↑ Backspace Right-click', 'Previous build / slide'],
   ['Home / End', 'First / last slide'],
   ['Number + Enter', 'Go to slide'],
@@ -278,6 +279,21 @@ export default function Presenter({ slides, startIndex, onExit }: Props) {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [blank, typed, help, grid, pen, laser, next, prev, jumpTo, goTo, clearPen, exit, slides])
+
+  // Mouse wheel: down = next (builds first), up = previous.
+  const wheelNav = useRef(createWheelNav())
+  useEffect(() => {
+    if (blank || grid || help) return
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return
+      e.preventDefault()
+      const step = wheelNav.current(e.deltaY)
+      if (step === 1) next()
+      else if (step === -1) prev()
+    }
+    document.addEventListener('wheel', onWheel, { passive: false })
+    return () => document.removeEventListener('wheel', onWheel)
+  }, [blank, grid, help, next, prev])
 
   const onClick = () => {
     // Full screen needs a user gesture; a slideshow that started on its own gets it from the first click.
