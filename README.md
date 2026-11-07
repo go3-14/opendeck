@@ -39,7 +39,9 @@ See [PRIVACY.md](PRIVACY.md) for exactly what is processed, stored and requested
 **Viewing**
 
 - The slide fits the window by default; zoom in and out, or press `0` to fit again.
-- Slide list with lazily rendered thumbnails; light and dark themes follow the system.
+- Slide list with lazily rendered thumbnails.
+- **Dark mode:** an Auto / Light / Dark toggle in the header (saved in the browser). In dark mode slide colours are inverted with their hue kept (a white slide turns near-black, black text turns near-white) while pictures are left alone; the *Invert slides in dark mode* switch in the More menu and Settings turns that off. Printing, copying and PNG export are never inverted.
+- **Mouse wheel:** scroll to change slides (one slide per flick). When the slide is zoomed in beyond the window, the wheel scrolls it and changes slides at its edge. `Ctrl` + wheel zooms. The same works in the slideshow.
 - Search slide text, table cells and speaker notes (`Ctrl+F`). Matching slides are marked in the slide list.
 - Copy the current slide as an image or as text, copy a text outline of the whole deck (with notes), print or save as PDF, or export every slide as a ZIP of PNGs.
 
@@ -95,6 +97,7 @@ On first install, the Settings page opens. To have downloads and right-clicked l
 | --- | --- |
 | `←` `→` `↑` `↓`, `Home`, `End` | Previous / next slide, first / last slide |
 | `+` `−`, `Ctrl` + wheel | Zoom in / out |
+| Mouse wheel | Next / previous slide (in the slideshow: next / previous build) |
 | `0` | Fit the slide to the window |
 | `T` | Show or hide the slide list |
 | `Ctrl+F` | Search slides and notes (`Enter` / `Shift+Enter` for next / previous match) |
