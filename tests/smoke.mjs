@@ -61,7 +61,11 @@ const browser = await chromium.launch({ executablePath, headless: true })
 let failures = 0
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `  (${detail})`}`)
-  if (!ok) failures++
+  if (!ok) {
+    failures++
+    // Shows up as an annotation on the GitHub Actions run (readable without a login)
+    if (process.env.GITHUB_ACTIONS) console.log(`::error title=Smoke check failed::${name} ${detail}`.replace(/\n/g, ' '))
+  }
 }
 
 // Console noise that is expected in headless runs.
