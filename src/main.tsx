@@ -4,11 +4,7 @@ import './index.css'
 import App from './App'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-// Follow the system light/dark setting.
-const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
-const applyTheme = () => document.documentElement.classList.toggle('dark', darkQuery.matches)
-applyTheme()
-darkQuery.addEventListener('change', applyTheme)
+import '@/lib/theme' // applies the saved or system light/dark theme before the first render
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

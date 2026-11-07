@@ -8,9 +8,10 @@ import { SlideCanvas, Thumbnail } from '@/components/SlideCanvas'
 import { Tip } from '@/components/Tip'
 import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { MonitorIcon, MoonIcon, SunIcon } from '@/components/ui/icons'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { ACCEPT, formatSize, isPresentationFile, isSlideshowFile } from '@/lib/files'
@@ -20,6 +21,7 @@ import { prefetchAround } from '@/lib/prefetch'
 import { exportSlidesAsZip, loadPptx, type Slide } from '@/lib/pptx'
 import { slideToJpegUrl, slideToPng } from '@/lib/slideImage'
 import { outline, searchSlides, slideText } from '@/lib/slideText'
+import { nextTheme, setInvertSlides, setTheme, useTheme } from '@/lib/theme'
 import { addRecent, clearRecent, listRecent, loadRecent, type RecentEntry } from '@/lib/recent'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +32,7 @@ const ZOOM_STEP = 0.25
 type Status = 'empty' | 'loading' | 'ready'
 
 export default function App() {
+  const themeState = useTheme()
   const [status, setStatus] = useState<Status>('empty')
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -435,6 +438,11 @@ export default function App() {
               Search
             </Button>
           </Tip>
+          <Tip label={`Theme: ${themeState.theme === 'auto' ? 'follows your system' : themeState.theme} (click to change)`}>
+            <Button variant="ghost" size="icon-sm" aria-label={`Theme: ${themeState.theme}`} onClick={() => setTheme(nextTheme(themeState.theme))}>
+              {themeState.theme === 'auto' ? <MonitorIcon /> : themeState.theme === 'dark' ? <MoonIcon /> : <SunIcon />}
+            </Button>
+          </Tip>
           <Tip label="Start slideshow (F5)">
             <Button variant="outline" size="sm" onClick={() => setPresenting(true)}>
               Present
@@ -476,6 +484,9 @@ export default function App() {
               <DropdownMenuItem disabled={!!exporting} onClick={exportAll}>
                 {exporting ?? 'Export slides as PNGs'}
               </DropdownMenuItem>
+              <DropdownMenuCheckboxItem checked={themeState.invertSlides} onCheckedChange={setInvertSlides}>
+                Invert slides in dark mode
+              </DropdownMenuCheckboxItem>
               <DropdownMenuItem onClick={() => setSettingsOpen(true)}>Settings…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

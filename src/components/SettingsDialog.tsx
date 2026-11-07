@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { setInvertSlides, setTheme, useTheme, type Theme } from '@/lib/theme'
 import { hasDownloadAccess, permissionsSupported, removeDownloadAccess, requestDownloadAccess } from '@/lib/permissions'
 
 interface Props {
@@ -23,6 +24,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function SettingsDialog({ open, onOpenChange, onClearRecent }: Props) {
   const [granted, setGranted] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
+  const themeState = useTheme()
 
   useEffect(() => {
     if (open && permissionsSupported) void hasDownloadAccess().then(setGranted)
@@ -48,6 +50,25 @@ export function SettingsDialog({ open, onOpenChange, onClearRecent }: Props) {
         </DialogHeader>
 
         <div className="space-y-5 text-sm">
+          <Section title="Appearance">
+            <div className="flex gap-1.5">
+              {(['auto', 'light', 'dark'] as Theme[]).map((t) => (
+                <Button key={t} size="sm" variant={themeState.theme === t ? 'secondary' : 'outline'} onClick={() => setTheme(t)}>
+                  {t === 'auto' ? 'Match system' : t === 'light' ? 'Light' : 'Dark'}
+                </Button>
+              ))}
+            </div>
+            <label className="flex items-start gap-2 pt-1.5 text-muted-foreground">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={themeState.invertSlides}
+                onChange={(e) => setInvertSlides(e.target.checked)}
+              />
+              <span>Invert slide colours in dark mode (pictures stay as they are). Printing and exports are never inverted.</span>
+            </label>
+          </Section>
+
           <Section title="Open downloads and links here">
             <p className="text-muted-foreground">
               To show a presentation you download or right-click, the extension has to read that file once. Turn this on
