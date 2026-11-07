@@ -31,9 +31,9 @@ const showcase = [
 
 const features = [
   ['Several ways to open files', 'Toolbar icon, drag and drop, recent files, or links you right-click. Optionally, downloads open straight in the viewer.'],
-  ['Light and dark', 'Follows your system theme. Slides fit your window, or zoom in.'],
+  ['Dark mode', 'Auto, light or dark, with slide colours inverted and pictures left alone. Slides fit your window, or zoom in.'],
   ['Draws what is in the file', 'Master and layout styles, shapes, pictures, tables, charts and SmartArt. Content it cannot draw is clearly marked.'],
-  ['Presenter tools', 'Laser pointer, pen, slide grid, black and white screens, and jump to any slide.'],
+  ['Presenter tools', 'Laser pointer, pen, slide grid, black and white screens, jump to any slide, and mouse-wheel paging.'],
   ['Many formats', '.pptx, .ppsx, .potx and the macro-enabled variants.'],
   ['Open source', 'MIT licensed, built in the open. Read the code, report problems, send fixes.'],
 ]
