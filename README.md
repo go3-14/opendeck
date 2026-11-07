@@ -1,16 +1,42 @@
+<div align="center">
+
 # Opendeck
 
-[![CI](https://github.com/go3-14/pptx_viewer_extension/actions/workflows/ci.yml/badge.svg)](https://github.com/go3-14/pptx_viewer_extension/actions/workflows/ci.yml)
+**A free, open-source PowerPoint viewer for your browser.**
+Search, slideshow with animations, dark mode, printing. Your files never leave your device.
 
-A Chrome, Edge, Firefox and Zen extension that opens PowerPoint presentations in the browser, with search, printing and a full-screen slideshow that plays animations. It works on your device: files are parsed and drawn locally, with no server, no upload and no tracking.
+[![CI](https://github.com/go3-14/opendeck/actions/workflows/ci.yml/badge.svg)](https://github.com/go3-14/opendeck/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Chrome](https://img.shields.io/badge/Chrome-supported-brightgreen)
+![Edge](https://img.shields.io/badge/Edge-supported-brightgreen)
+![Firefox](https://img.shields.io/badge/Firefox%20%26%20Zen-supported-brightgreen)
 
-- Opens `.pptx`, `.ppsx`, `.potx` and the macro-enabled variants (`.pptm`, `.ppsm`, `.potm`).
-- Opens from the toolbar, by drag and drop, from a download, from a right-click on a link, or from the recent-files list.
-- A purpose-built renderer for the Office Open XML format (text, shapes, tables, charts, SmartArt, pictures), written in plain JavaScript on top of the browser's Canvas API.
+[Website](https://opendeck.gopi.is-a.dev/) · [Install](#install) · [Report a problem](https://github.com/go3-14/opendeck/issues/new/choose) · [Privacy](PRIVACY.md)
 
-See [PRIVACY.md](PRIVACY.md) for exactly what is processed, stored and requested.
+<img src="store/screenshots/1-view.jpg" alt="Opendeck showing a presentation with the slide list on the left" width="820">
 
-**Website:** <https://opendeck.gopi.is-a.dev/>. **Problems or ideas:** [open an issue](https://github.com/go3-14/pptx_viewer_extension/issues/new/choose).
+</div>
+
+## Why Opendeck
+
+- **Private by design.** Files are parsed and drawn on your device. No server, no upload, no tracking.
+- **No Office needed.** A purpose-built renderer for the Office Open XML format (text, shapes, tables, charts, SmartArt, pictures), written in plain JavaScript on the Canvas API.
+- **Opens however you like.** Toolbar, drag and drop, downloads, right-click on a link, or the recent-files list. Handles `.pptx`, `.ppsx`, `.potx` and the macro-enabled variants.
+- **A real slideshow.** Full screen with animation builds and transitions, speaker view, laser pointer, pen and slide grid.
+- **Dark mode.** Slide colours are inverted with their hue kept; pictures stay as they are.
+
+<p align="center">
+  <img src="store/screenshots/4-dark.jpg" alt="Dark mode" width="400">
+  <img src="store/screenshots/5-speaker-view.jpg" alt="Speaker view" width="400">
+</p>
+
+## Quick start
+
+1. Download `opendeck-<version>.zip` from the [Releases page](https://github.com/go3-14/opendeck/releases) and unzip it.
+2. In `chrome://extensions` or `edge://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the unzipped folder.
+3. Click the Opendeck toolbar icon and open a presentation (or drop one on the page).
+
+Firefox and Zen, building from source and the optional "open downloads here" setting are covered in [Install](#install).
 
 ## Contents
 
@@ -60,7 +86,7 @@ See [PRIVACY.md](PRIVACY.md) for exactly what is processed, stored and requested
 
 ### From a GitHub release (no build needed)
 
-1. Download `opendeck-<version>.zip` from the [Releases page](https://github.com/go3-14/pptx_viewer_extension/releases) and unzip it into a folder you will keep.
+1. Download `opendeck-<version>.zip` from the [Releases page](https://github.com/go3-14/opendeck/releases) and unzip it into a folder you will keep.
 2. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
 3. Click **Load unpacked** and select the unzipped folder (the one containing `manifest.json`).
 
@@ -75,8 +101,8 @@ Use the signed `.xpi` from the Releases page, or the listing on addons.mozilla.o
 Requirements: Node 20 or newer, and Chrome or Edge.
 
 ```bash
-git clone https://github.com/go3-14/pptx_viewer_extension.git
-cd pptx_viewer_extension
+git clone https://github.com/go3-14/opendeck.git
+cd opendeck
 npm install
 npm run build
 ```
@@ -251,6 +277,8 @@ Chart parts carry their data in cached values, so no workbook is needed. The par
 
 Finished slides are kept in a small least-recently-used cache so paging back and forth is instant.
 
+**Dark mode** passes `invert: true` to `renderSlide`, which wraps the off-screen 2D context in a Proxy (`dark.js`). Every colour set through `fillStyle`, `strokeStyle` or a gradient stop has its lightness flipped (hue and alpha kept), so shapes, text, tables and charts follow without touching each draw call. Pictures are drawn as they are, and light and dark renders are cached separately.
+
 ### Slideshow (`Presenter.tsx`)
 
 The slideshow holds a position `{ index, step }`. A click advances the step until the slide's builds are exhausted, then moves to the next slide. Moving to a new slide plays its transition: the outgoing slide is copied to an overlay canvas, the new slide is drawn, and the Web Animations API animates the two layers (opacity, translation or clip). Transitions are skipped when the system asks for reduced motion. The speaker view, pen layer and laser pointer are overlays on the same stage.
@@ -267,6 +295,8 @@ src/
   main.tsx, App.tsx     application shell
   components/           Presenter, SearchBar, SettingsDialog, SlideCanvas, PrintPages, ui/ (shadcn)
   lib/                  pipeline, hooks, storage and helpers (see Architecture)
+    theme.ts            Auto / Light / Dark state
+    wheelNav.ts         mouse-wheel to slide navigation
   renderer/
     xml.js              DOM helpers (matching by local name, cached parsing)
     color.js            colour resolution and modifiers
@@ -276,10 +306,13 @@ src/
     parse-chart.js      chart model
     render-canvas.js    drawing pipeline, text layout, shapes, tables, images
     render-chart.js     chart drawing
+    dark.js             colour inversion for dark mode (wraps the 2D context)
     fallback-notice.js  badge for unsupported content
 tests/
   make-fixtures.mjs     generates an 8-slide test deck
   smoke.mjs             end-to-end test in real Chrome
+  visual.mjs            pixel comparison against stored reference images
+  bench.mjs             load-time benchmark
   README.md             what the test deck covers
 PRIVACY.md
 ```
