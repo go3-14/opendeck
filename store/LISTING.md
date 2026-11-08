@@ -42,8 +42,9 @@ PRESENT
 USE THE CONTENT
 • Copy a slide as an image or as text
 • Copy a text outline of the whole presentation, notes included
-• Print or save as PDF
-• Export every slide as PNG images
+• Download the original file you opened
+• Export a presentation as a PDF file (every page keeps its slide's size and orientation)
+• Print, or export every slide as PNG images
 
 WHAT IT DRAWS
 Text with master and layout styles, shapes, pictures, tables with table styles, charts (column, bar, line, area, pie, doughnut), and SmartArt. Rare content it cannot draw is clearly marked instead of silently dropped.
@@ -98,7 +99,7 @@ Upload in this order and add the captions if the dashboard asks for them.
 | --- | --- |
 | `screenshots/1-view.jpg` | Fits every slide to your window, with a slide list and charts drawn from the file |
 | `screenshots/2-search.jpg` | Search slide text, tables and speaker notes |
-| `screenshots/3-more-menu.jpg` | Copy a slide as an image or text, print or save as PDF, export PNGs |
+| `screenshots/3-more-menu.jpg` | Copy a slide as an image or text, download the original, export as PDF, print, export PNGs |
 | `screenshots/4-dark.jpg` | Dark mode inverts slide colours; pictures stay as they are |
 | `screenshots/5-speaker-view.jpg` | Full-screen slideshow with speaker notes, next slide and a timer |
 

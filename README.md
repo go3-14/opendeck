@@ -67,11 +67,11 @@ Firefox and Zen, building from source and the optional "open downloads here" set
 
 - The slide fits the window by default; zoom in and out, or press `0` to fit again.
 - Slide list with lazily rendered thumbnails.
-- **Dark mode:** an Auto / Light / Dark toggle in the header (saved in the browser). In dark mode slide colours are inverted with their hue kept (a white slide turns near-black, black text turns near-white) while pictures are left alone; the *Invert slides in dark mode* switch in the More menu and Settings turns that off. Printing, copying and PNG export are never inverted.
+- **Dark mode:** an Auto / Light / Dark toggle in the header (saved in the browser). In dark mode slide colours are inverted with their hue kept (a white slide turns near-black, black text turns near-white) while pictures are left alone; the *Invert slides in dark mode* switch in the More menu and Settings turns that off. Printing, copying, PDF export and PNG export are never inverted.
 - **Mouse wheel:** scroll to change slides (one slide per flick). When the slide is zoomed in beyond the window, the wheel scrolls it and changes slides at its edge. `Ctrl` + wheel zooms. The same works in the slideshow.
 - **Select and copy text:** drag over the words on a slide or PDF page, then `Ctrl+C`. (Slides are drawn on a canvas; an invisible text layer sits on top, so charts' labels are not selectable.)
 - Search slide text, table cells and speaker notes (`Ctrl+F`). Matching slides are marked in the slide list.
-- Copy the current slide as an image or as text, copy a text outline of the whole deck (with notes), print or save as PDF, or export every slide as a ZIP of PNGs.
+- Copy the current slide as an image or as text, copy a text outline of the whole deck (with notes), **download the original file** (the exact `.pptx` or `.pdf` you opened, useful because Opendeck takes over browser downloads), **export a presentation as a PDF file** (one page per slide, each page the size and orientation of its slide, no print dialog), print, or export every slide as a ZIP of PNGs.
 
 **Slideshow**
 
@@ -219,6 +219,7 @@ sequenceDiagram
 | `components/Presenter.tsx` | The full-screen slideshow: builds, transitions, speaker view, pen, laser, grid. |
 | `components/SearchBar.tsx`, `SettingsDialog.tsx`, `PrintPages.tsx` | Search UI, permission and privacy settings, print stylesheet content. |
 | `lib/pptx.ts` | `loadPptx()` pipeline (bytes to slide models) and PNG-ZIP export. |
+| `lib/pdfExport.ts`, `lib/download.ts` | Writes a PDF file (one JPEG page per slide, sized like the slide) and saves blobs as downloads. |
 | `lib/useSlideRender.ts` | Hook that draws a slide on a canvas; latest request wins, aborted renders never touch the canvas. |
 | `lib/prefetch.ts`, `lib/renderQueue.ts` | Decode neighbouring slides' images ahead of time; limit thumbnail work to two at a time. |
 | `lib/slideText.ts` | Plain-text extraction for search, copy and the outline. |

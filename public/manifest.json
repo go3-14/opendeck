@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Opendeck",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Free, open-source viewer for PowerPoint and PDF files, with search and a full-screen slideshow. Files never leave your device.",
   "homepage_url": "https://github.com/go3-14/pptx_viewer_extension",
   "minimum_chrome_version": "111",

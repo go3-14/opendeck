@@ -27,11 +27,12 @@ const SECTIONS = ['features', 'how', 'privacy', 'support']
 const showcase = [
   { id: 'search', label: 'Search', shot: shotSearch, alt: 'Search results highlighted in the slide list', title: 'Search everything', text: 'Find words in slide text, tables and speaker notes. Matching slides are marked in the slide list.' },
   { id: 'present', label: 'Present', shot: shotSpeaker, alt: 'Speaker view with notes, next slide and a timer', title: 'Present with notes', text: 'A full-screen slideshow that plays animation builds and transitions, with speaker view, laser pointer and pen.' },
-  { id: 'export', label: 'Copy and export', shot: shotMenu, alt: 'More menu with copy, print and export options', title: 'Take the content with you', text: 'Copy a slide as an image or text, copy an outline, print or save as PDF, and export every slide as PNG.' },
+  { id: 'export', label: 'Copy and export', shot: shotMenu, alt: 'More menu with copy, print and export options', title: 'Take the content with you', text: 'Copy a slide as an image or text, copy an outline, download the original file, export a PDF, print, and export every slide as PNG.' },
 ]
 
 // Newest first. The first entry is shown as the current release, so keep it in step with package.json.
 const releases = [
+  { version: '1.5.0', title: 'Download and export as PDF', text: 'Download the original file you opened, and export a presentation as a real PDF where every page keeps its slide size and orientation.' },
   { version: '1.4.0', title: 'Select and copy text', text: 'Drag over words on a slide or PDF page and press Ctrl+C. PDFs opened from your computer in the browser now open in Opendeck too.' },
   { version: '1.3.0', title: 'PDF files', text: 'PDFs open in the same viewer with search, slideshow, printing and dark mode. Downloads and links to .pdf files can open here.' },
   { version: '1.2.0', title: 'Dark mode and mouse wheel', text: 'Auto, light or dark with inverted slide colours, and scrolling to change slides in the viewer and the slideshow.' },
@@ -45,7 +46,7 @@ const features = [
   ['PDF files too', 'PDFs open in the same viewer, with search, slideshow, printing and dark mode. Links to .pdf files can open here instead of the browser viewer.'],
   ['Select and copy text', 'Drag over words on a slide or a PDF page and press Ctrl+C. Tables, bullets and rotated text all work.'],
   ['Many formats', '.pptx, .ppsx, .potx and the macro-enabled variants, plus PDF.'],
-  ['Print and export', 'Print or save as PDF, export every slide as PNG, or copy a slide as an image or text. Printing is always in the original colours.'],
+  ['Download and export', 'Download the original file, export a presentation as a PDF with every page in its own size, print, export slides as PNG, or copy a slide as an image or text. Always in the original colours.'],
   ['Open source', 'MIT licensed, built in the open. Read the code, report problems, send fixes.'],
 ]
 
