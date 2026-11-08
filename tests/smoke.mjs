@@ -398,6 +398,82 @@ try {
   check('selectable text checks ran', false, String(err))
 }
 
+// ─── 1e. Download original, Export as PDF, Print orientation ────────────────────
+
+try {
+  const pdfIn = path.join(work, 'test.pdf')
+  const same = (a, b) => Buffer.compare(fs.readFileSync(a), fs.readFileSync(b)) === 0
+  const menu = async (page, label) => {
+    await page.click('button[aria-label="More actions"]')
+    return Promise.all([page.waitForEvent('download', { timeout: 120000 }), page.click(`text=${label}`)]).then(([d]) => d)
+  }
+
+  const deck = await browser.newPage({ viewport: { width: 1400, height: 900 }, acceptDownloads: true })
+  const problems = watch(deck)
+  await openDeck(deck, fixture)
+  await deck.waitForSelector('[aria-label="Slide 8"]')
+
+  const original = await menu(deck, 'Download original file')
+  check('download original: keeps the file name', original.suggestedFilename() === 'rich.pptx', original.suggestedFilename())
+  check('download original: the bytes are identical to the opened file', same(await original.path(), fixture))
+
+  const exported = await menu(deck, 'Export as PDF')
+  check('export as PDF: named after the file', exported.suggestedFilename() === 'rich.pdf', exported.suggestedFilename())
+  const pdfPath = await exported.path()
+  const raw = fs.readFileSync(pdfPath).toString('latin1')
+  check('export as PDF: a PDF file', raw.startsWith('%PDF-') && raw.includes('%%EOF'))
+  check('export as PDF: one page per slide', (raw.match(/\/Type \/Page /g) || []).length === 8)
+  const boxes = [...raw.matchAll(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g)].map((m) => [Number(m[1]), Number(m[2])])
+  check('export as PDF: every page has the slide size (960 x 540, landscape)', boxes.length === 8 && boxes.every(([w, h]) => w === 960 && h === 540), JSON.stringify(boxes[0]))
+
+  // The exported file opens in the viewer, upright and not mirrored.
+  const back = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  const savedPdf = path.join(work, 'rich-exported.pdf') // the download path has no extension
+  fs.copyFileSync(pdfPath, savedPdf)
+  await openDeck(back, savedPdf)
+  await back.waitForSelector('[aria-label="Slide 8"]', { timeout: 30000 })
+  await back.click('[aria-label="Slide 2"]')
+  await settle(back)
+  const blueSquare = await back.evaluate(() => {
+    const c = document.querySelector('main canvas')
+    const k = c.width / 960
+    const px = (x, y) => Array.from(c.getContext('2d').getImageData(Math.round(x * k), Math.round(y * k), 1, 1).data.slice(0, 3))
+    return { square: px(180, 252), circle: px(396, 252), mirrored: px(960 - 180, 252) }
+  })
+  check('exported PDF: the blue square is where the slide has it', near(blueSquare.square, [68, 114, 196], 30), String(blueSquare.square))
+  check('exported PDF: the green circle is to its right (not mirrored)', near(blueSquare.circle, [112, 173, 71], 30), String(blueSquare.circle))
+  await back.close()
+  check('export and download: no console errors', problems.length === 0, problems.join(' | '))
+  await deck.close()
+
+  // A PDF that is already open: download gives it back unchanged, and there is no re-export.
+  const doc = await browser.newPage({ viewport: { width: 1400, height: 900 }, acceptDownloads: true })
+  await openDeck(doc, pdfIn)
+  await settle(doc)
+  await doc.click('button[aria-label="More actions"]')
+  check('PDF document: no "Export as PDF" item', (await doc.locator('text=Export as PDF').count()) === 0)
+  await doc.keyboard.press('Escape')
+  const pdfBack = await menu(doc, 'Download original PDF')
+  check('PDF document: the downloaded PDF is identical to the opened one', same(await pdfBack.path(), pdfIn))
+
+  // Printing: a portrait page is printed on a portrait sheet.
+  await doc.click('button[aria-label="More actions"]')
+  await doc.click('text=Print…')
+  await doc.waitForSelector('.print-pages img', { state: 'attached' })
+  await doc.emulateMedia({ media: 'print' })
+  const printInfo = await doc.evaluate(() => {
+    const img = document.querySelector('.print-pages img')
+    return { cls: img.className, page: getComputedStyle(img).page }
+  })
+  check('print: a portrait PDF page is marked portrait', printInfo.cls === 'portrait' && printInfo.page === 'portrait', JSON.stringify(printInfo))
+  const printed = (await doc.pdf({ preferCSSPageSize: true })).toString('latin1')
+  const sheet = /\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/.exec(printed)
+  check('print: the printed sheet of a portrait PDF is portrait', !!sheet && Number(sheet[2]) > Number(sheet[1]), sheet ? sheet[0] : 'no MediaBox')
+  await doc.close()
+} catch (err) {
+  check('download and export checks ran', false, String(err))
+}
+
 // ─── 2. Optional: your own decks (every deck must open and draw every slide) ──
 
 const inputs = process.argv.slice(2)
