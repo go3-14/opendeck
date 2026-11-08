@@ -37,6 +37,10 @@ const server = http.createServer((req, res) => {
   if (req.url.startsWith('/files/test.pdf')) {
     res.writeHead(200, { 'content-type': 'application/pdf' })
     res.end(fs.readFileSync(pdf))
+  } else if (req.url.startsWith('/dl')) {
+    // A download link: no .pdf in the address, sent as an attachment.
+    res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="report.pdf"' })
+    res.end(fs.readFileSync(pdf))
   } else res.writeHead(404).end()
 })
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
@@ -69,6 +73,18 @@ const check = (name, ok, detail = '') => {
   check('opening a .pdf URL redirects to the viewer', page.url().startsWith('chrome-extension://') && page.url().includes('mode=url'), page.url())
   check('the query string of the link is kept', page.url().includes('?x=1&y=2'), page.url())
   check('the viewer draws the PDF pages', (await page.locator('aside button[aria-label^=Slide]').count()) === 2)
+
+  // A PDF sent as a download (attachment, no .pdf in the address): the download listener catches it.
+  const dlPage = await ctx.newPage()
+  await dlPage.goto('about:blank')
+  await dlPage.evaluate((u) => { const a = document.createElement('a'); a.href = u; a.download = ''; document.body.append(a); a.click() }, 'http://127.0.0.1:' + port + '/dl?id=7')
+  let dlViewer = null
+  for (let i = 0; i < 60 && !dlViewer; i++) {
+    dlViewer = ctx.pages().find((p) => p.url().includes('mode=intercepted')) ?? null
+    if (!dlViewer) await new Promise((r) => setTimeout(r, 250))
+  }
+  await dlViewer?.waitForSelector('aside button[aria-label^=Slide]', { timeout: 20000 }).catch(() => undefined)
+  check('a PDF sent as a download opens in the viewer', !!dlViewer && (await dlViewer.locator('aside button[aria-label^=Slide]').count()) === 2, dlViewer ? dlViewer.url() : 'no viewer tab')
 
   // A PDF opened from the computer (a file:// address): redirected too.
   const local = await ctx.newPage()
