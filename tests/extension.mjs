@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
+import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 
@@ -68,6 +69,26 @@ const check = (name, ok, detail = '') => {
   check('opening a .pdf URL redirects to the viewer', page.url().startsWith('chrome-extension://') && page.url().includes('mode=url'), page.url())
   check('the query string of the link is kept', page.url().includes('?x=1&y=2'), page.url())
   check('the viewer draws the PDF pages', (await page.locator('aside button[aria-label^=Slide]').count()) === 2)
+
+  // A PDF opened from the computer (a file:// address): redirected too.
+  const local = await ctx.newPage()
+  await local.goto(pathToFileURL(pdf).href).catch(() => undefined)
+  await local.waitForSelector('aside button[aria-label^=Slide]', { timeout: 15000 }).catch(() => undefined)
+  check('a local .pdf (file://) opens in the viewer', local.url().startsWith('chrome-extension://') && (await local.locator('aside button[aria-label^=Slide]').count()) === 2, local.url())
+
+  // A PowerPoint file opened from the computer is a download in the browser: the extension catches it.
+  const sample = path.join(root, 'store', 'sample', 'Quarterly Business Review.pptx')
+  if (fs.existsSync(sample)) {
+    const nav = await ctx.newPage()
+    await nav.goto(pathToFileURL(sample).href).catch(() => undefined)
+    let viewer = null
+    for (let i = 0; i < 60 && !viewer; i++) {
+      viewer = ctx.pages().find((p) => p.url().includes('mode=intercepted')) ?? null
+      if (!viewer) await new Promise((r) => setTimeout(r, 250))
+    }
+    await viewer?.waitForSelector('aside button[aria-label^=Slide]', { timeout: 20000 }).catch(() => undefined)
+    check('a local .pptx (file://) opens in the viewer', !!viewer && viewer.url().includes('mode=intercepted') && (await viewer.locator('aside button[aria-label^=Slide]').count()) > 0, viewer ? viewer.url() : 'no viewer tab')
+  }
 }
 await ctx.close()
 server.close()

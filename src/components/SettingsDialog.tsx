@@ -95,8 +95,14 @@ export function SettingsDialog({ open, onOpenChange, onClearRecent }: Props) {
 
           <Section title="Files on your computer">
             <p className="text-muted-foreground">
-              To open local presentations (double-clicking or file:// links), also turn on “Allow access to file URLs” for
-              this extension on the chrome://extensions page.
+              Windows opens a double-clicked file in the app it has chosen, never in an extension. Files from your
+              computer open here by these routes: the Open button, dragging a file onto this page, or a file opened in
+              the browser (drag it onto a browser tab, or for a PDF use Open with, Edge or Chrome, or make the browser
+              your PDF app).
+            </p>
+            <p className="text-muted-foreground">
+              For files opened in the browser, also turn on “Allow access to file URLs” for this extension on the
+              chrome://extensions page, and keep the setting above on.
             </p>
           </Section>
 

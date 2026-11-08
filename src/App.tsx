@@ -168,7 +168,10 @@ export default function App() {
       .catch((err) => {
         console.error('[Opendeck] Could not fetch the linked file:', err)
         setStatus('empty')
-        setError(`Could not download ${src}: ${err?.message || err}. You can turn off "Open downloads and links here" in Settings to use the browser's own PDF viewer.`)
+        const hint = src.startsWith('file:')
+          ? 'Turn on "Allow access to file URLs" for this extension on the extensions page to open files from your computer.'
+          : 'You can turn off "Open downloads and links here" in Settings to use the browser\'s own PDF viewer.'
+        setError(`Could not open ${src}: ${err?.message || err}. ${hint}`)
       })
   }, [openBytes])
 

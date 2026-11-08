@@ -68,7 +68,8 @@ async function syncPdfRule() {
             priority: 1,
             action: { type: 'redirect', redirect: { regexSubstitution: VIEWER_URL + '?mode=url&src=\\1' } },
             condition: {
-              regexFilter: '^(https?://[^?#]*\\.pdf(?:\\?[^#]*)?)(?:#.*)?$',
+              // Web addresses and (with "Allow access to file URLs" on) PDFs opened from the computer.
+              regexFilter: '^((?:https?|file)://[^?#]*\\.pdf(?:\\?[^#]*)?)(?:#.*)?$',
               isUrlFilterCaseSensitive: false,
               resourceTypes: ['main_frame'],
             },
