@@ -13,6 +13,7 @@ import { Reveal } from './Reveal'
 import { useActiveSection } from './hooks/useActiveSection'
 import { useScroll } from './hooks/useScroll'
 
+import pkg from '../package.json'
 import icon from '../public/icons/icon48.png'
 import shotView from '../store/screenshots/1-view.jpg'
 import shotSearch from '../store/screenshots/2-search.jpg'
@@ -29,12 +30,22 @@ const showcase = [
   { id: 'export', label: 'Copy and export', shot: shotMenu, alt: 'More menu with copy, print and export options', title: 'Take the content with you', text: 'Copy a slide as an image or text, copy an outline, print or save as PDF, and export every slide as PNG.' },
 ]
 
+// Newest first. The first entry is shown as the current release, so keep it in step with package.json.
+const releases = [
+  { version: '1.4.0', title: 'Select and copy text', text: 'Drag over words on a slide or PDF page and press Ctrl+C. PDFs opened from your computer in the browser now open in Opendeck too.' },
+  { version: '1.3.0', title: 'PDF files', text: 'PDFs open in the same viewer with search, slideshow, printing and dark mode. Downloads and links to .pdf files can open here.' },
+  { version: '1.2.0', title: 'Dark mode and mouse wheel', text: 'Auto, light or dark with inverted slide colours, and scrolling to change slides in the viewer and the slideshow.' },
+]
+
 const features = [
   ['Several ways to open files', 'Toolbar icon, drag and drop, recent files, or links you right-click. Optionally, downloads open straight in the viewer.'],
   ['Dark mode', 'Auto, light or dark, with slide colours inverted and pictures left alone. Slides fit your window, or zoom in.'],
   ['Draws what is in the file', 'Master and layout styles, shapes, pictures, tables, charts and SmartArt. Content it cannot draw is clearly marked.'],
   ['Presenter tools', 'Laser pointer, pen, slide grid, black and white screens, jump to any slide, and mouse-wheel paging.'],
-  ['Many formats', '.pptx, .ppsx, .potx, the macro-enabled variants and PDF files.'],
+  ['PDF files too', 'PDFs open in the same viewer, with search, slideshow, printing and dark mode. Links to .pdf files can open here instead of the browser viewer.'],
+  ['Select and copy text', 'Drag over words on a slide or a PDF page and press Ctrl+C. Tables, bullets and rotated text all work.'],
+  ['Many formats', '.pptx, .ppsx, .potx and the macro-enabled variants, plus PDF.'],
+  ['Print and export', 'Print or save as PDF, export every slide as PNG, or copy a slide as an image or text. Printing is always in the original colours.'],
   ['Open source', 'MIT licensed, built in the open. Read the code, report problems, send fixes.'],
 ]
 
@@ -47,9 +58,8 @@ const steps = [
 const faq = [
   ['A slide looks different from PowerPoint.', 'Opendeck draws slides itself from the file, so very unusual effects can differ. Open an issue with a small example and what you expected. Content it cannot draw is marked on the slide instead of silently dropped.'],
   ['Why did downloads not open in the viewer?', "That feature is optional. Open the extension's Settings and turn on Open downloads and links here. Your browser then asks for access to websites, which is only used to read the file you just downloaded."],
-  ['How do I open a file from my computer by double-clicking?', "Turn on Allow access to file URLs for Opendeck on the browser's extensions page. Browsers keep that switch separate and extensions cannot turn it on for you."],
   ['Does it edit presentations?', 'No. Opendeck is a viewer: open, search, present, copy, print and export. Your files are never changed.'],
-  ['Can I double-click a file to open it in Opendeck?', 'Windows opens a double-clicked file in the app it has chosen, and an extension cannot change that. Use the toolbar button, drag the file onto the viewer or a browser tab, or for PDFs choose Open with, Edge or Chrome. With the file-URL switch on, those open in Opendeck.'],
+  ['Can I double-click a file to open it in Opendeck?', 'Windows opens a double-clicked file in the app it has chosen, and an extension cannot change that. Use the toolbar button, drag the file onto the viewer or a browser tab, or for PDFs choose Open with, Edge or Chrome. For files opened in the browser, also turn on Allow access to file URLs for Opendeck on the extensions page of your browser; browsers keep that switch separate and extensions cannot turn it on for you.'],
   ['Can it open PDFs?', 'Yes. PDFs open in the same viewer, with search, slideshow, printing and dark mode. With "Open downloads and links here" on, links to .pdf files open in Opendeck instead of the browser\'s PDF viewer; turn it off to get that viewer back.'],
   ['Is it really free?', 'Yes. It is open source under the MIT licence, with no ads, no accounts and no paid tier.'],
 ]
@@ -118,11 +128,11 @@ function Hero() {
   return (
     <div className="mx-auto max-w-5xl px-5 pt-16 pb-10 text-center sm:pt-20">
       <Badge variant="secondary" className={cn(enter, 'mb-5')}>Free · Open source · Private</Badge>
-      <h1 className={cn(enter, 'mx-auto max-w-[20ch] text-4xl leading-[1.1] font-semibold tracking-tight delay-75 sm:text-5xl')}>
-        PowerPoint files, right in your browser.
+      <h1 className={cn(enter, 'mx-auto max-w-[24ch] text-4xl leading-[1.1] font-semibold tracking-tight delay-75 sm:text-5xl')}>
+        PowerPoint and PDF files, right in your browser.
       </h1>
       <p className={cn(enter, 'mx-auto mt-4 max-w-xl text-lg text-muted-foreground delay-150')}>
-        Opendeck is a free, open-source viewer with search and a full-screen slideshow. No upload, no account, no server. Your files stay on your device.
+        Opendeck is a free, open-source viewer with search, selectable text and a full-screen slideshow. No upload, no account, no server. Your files stay on your device.
       </p>
       <div className={cn(enter, 'mt-7 flex flex-wrap justify-center gap-2.5 delay-200')}>
         <ComingSoon name="Firefox" />
@@ -133,6 +143,11 @@ function Hero() {
         </Button>
       </div>
       <p className={cn(enter, 'mt-4 text-sm text-muted-foreground delay-300')}>Works in Chrome, Edge, Firefox and Zen. MIT licence.</p>
+      <p className={cn(enter, 'mt-2 text-sm delay-300')}>
+        <a className="underline underline-offset-4 hover:text-foreground" href={`${REPO}/releases/latest`}>
+          Latest: version {pkg.version}, {releases[0].title.toLowerCase()}
+        </a>
+      </p>
 
       <div className={cn(enter, 'mt-12 delay-500')}>
         <div
@@ -222,6 +237,28 @@ export function Site() {
                 </Reveal>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section id="new" className={section}>
+          <div className={wrap}>
+            <SectionHead title="What's new" sub={`Version ${pkg.version} is the latest release.`} />
+            <div className="grid gap-4 md:grid-cols-3">
+              {releases.map((r, i) => (
+                <Reveal key={r.version} delay={i * 80}>
+                  <Card className="h-full">
+                    <CardHeader>
+                      <Badge variant="secondary" className="w-fit">v{r.version}</Badge>
+                      <CardTitle>{r.title}</CardTitle>
+                      <CardDescription>{r.text}</CardDescription>
+                    </CardHeader>
+                  </Card>
+                </Reveal>
+              ))}
+            </div>
+            <p className="mt-6 text-sm text-muted-foreground">
+              Every change is listed on the <a className="underline underline-offset-4" href={`${REPO}/releases`}>Releases page</a>.
+            </p>
           </div>
         </section>
 
