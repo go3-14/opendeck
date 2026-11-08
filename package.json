@@ -4,8 +4,8 @@
   "version": "1.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev": "node scripts/copy-pdfjs-assets.mjs && vite",
+    "build": "node scripts/copy-pdfjs-assets.mjs && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "node tests/smoke.mjs",
     "icons": "node scripts/make-icons.mjs",
@@ -24,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "jszip": "^3.10.2",
+    "pdfjs-dist": "^6.5.438",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "shadcn": "^4.23.0",

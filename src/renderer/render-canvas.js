@@ -10,6 +10,7 @@
 import { drawFallbackBadge } from './fallback-notice.js';
 import { drawChart } from './render-chart.js';
 import { wrapContext } from './dark.js';
+import { drawPdfOffscreen } from './render-pdf.js';
 
 const LINE_HEIGHT = 1.2; // line box = font size × 1.2 (typical for Calibri/Arial)
 const DESCENT = 0.25; // baseline sits this many em above the line box bottom
@@ -893,9 +894,14 @@ export async function renderSlide(
 
   if (!off) {
     if (signal?.aborted) return false;
-    await preloadSlideImages(slideModel);
-    if (signal?.aborted) return false;
-    off = drawSlideOffscreen(slideModel, scale, dpr, step, invert);
+    if (slideModel.kind === 'pdf') {
+      off = await drawPdfOffscreen(slideModel, scale, dpr, invert, signal);
+      if (!off) return false;
+    } else {
+      await preloadSlideImages(slideModel);
+      if (signal?.aborted) return false;
+      off = drawSlideOffscreen(slideModel, scale, dpr, step, invert);
+    }
     if (key) {
       renderCache.set(key, off);
       while (renderCache.size > RENDER_CACHE_LIMIT) renderCache.delete(renderCache.keys().next().value);

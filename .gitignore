@@ -53,3 +53,6 @@ implementation_plan.md
 
 # Test output
 tests/output/
+
+# Copied from pdfjs-dist before each build
+public/pdfjs/

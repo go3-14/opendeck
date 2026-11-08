@@ -14,7 +14,8 @@ import {
 import { MonitorIcon, MoonIcon, SunIcon } from '@/components/ui/icons'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { ACCEPT, formatSize, isPresentationFile, isSlideshowFile } from '@/lib/files'
+import { ACCEPT, formatSize, isPdfFile, isPresentationFile, isSlideshowFile } from '@/lib/files'
+import { PdfCancelled, loadPdf, looksLikePdf } from '@/lib/pdf'
 import { consumeHandoff } from '@/lib/idb'
 import { permissionsSupported } from '@/lib/permissions'
 import { prefetchAround } from '@/lib/prefetch'
@@ -31,6 +32,9 @@ const MAX_ZOOM = 3
 const ZOOM_STEP = 0.25
 
 type Status = 'empty' | 'loading' | 'ready'
+
+const askPdfPassword = async (wrong: boolean) =>
+  window.prompt(wrong ? 'That password was not correct. Enter the password for this PDF:' : 'This PDF is protected. Enter its password:')
 
 export default function App() {
   const themeState = useTheme()
@@ -68,7 +72,9 @@ export default function App() {
     setStatus('loading')
     setMessage('Opening…')
     try {
-      const loaded = await loadPptx(bytes, setMessage)
+      const loaded = isPdfFile(name) || looksLikePdf(bytes)
+        ? await loadPdf(bytes, setMessage, askPdfPassword)
+        : await loadPptx(bytes, setMessage)
       setSlides(loaded)
       setFilename(name)
       setIndex(0)
@@ -78,7 +84,11 @@ export default function App() {
       void addRecent(name, bytes).then(refreshRecent).catch(() => undefined)
     } catch (err) {
       console.error('[Opendeck] Failed to open presentation:', err)
-      setError(`Could not open the presentation: ${err instanceof Error ? err.message : err}`)
+      if (err instanceof PdfCancelled) {
+        setStatus(slides.length ? 'ready' : 'empty')
+        return
+      }
+      setError(`Could not open the file: ${err instanceof Error ? err.message : err}`)
       setStatus(slides.length ? 'ready' : 'empty')
     }
   }, [slides.length, refreshRecent])
@@ -87,7 +97,7 @@ export default function App() {
     async (file: File | undefined) => {
       if (!file) return
       if (!isPresentationFile(file.name)) {
-        setError('Please choose a PowerPoint file (.pptx, .ppsx, .potx, …).')
+        setError('Please choose a PowerPoint file (.pptx, .ppsx, .potx, …) or a PDF.')
         return
       }
       await openBytes(await file.arrayBuffer(), file.name)
@@ -135,6 +145,28 @@ export default function App() {
         console.error('[Opendeck] Handoff read failed:', err)
         setStatus('empty')
         setError(`Could not load the presentation: ${err?.message || err}`)
+      })
+  }, [openBytes])
+
+  // A PDF link was taken over by the extension: fetch the file ourselves (cookies included).
+  const urlStarted = useRef(false)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const src = params.get('src')
+    if (params.get('mode') !== 'url' || !src || urlStarted.current) return
+    urlStarted.current = true
+    setStatus('loading')
+    setMessage('Downloading…')
+    fetch(src, { credentials: 'include' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`The server answered ${res.status}`)
+        const name = decodeURIComponent(new URL(src).pathname.split('/').pop() || '') || 'document.pdf'
+        return openBytes(await res.arrayBuffer(), name)
+      })
+      .catch((err) => {
+        console.error('[Opendeck] Could not fetch the linked file:', err)
+        setStatus('empty')
+        setError(`Could not download ${src}: ${err?.message || err}. You can turn off "Open downloads and links here" in Settings to use the browser's own PDF viewer.`)
       })
   }, [openBytes])
 

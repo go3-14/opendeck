@@ -29,7 +29,7 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), 'pptx-viewer-smoke-'))
 const fixture = path.join(work, 'rich.pptx')
 execFileSync(process.execPath, [path.join(root, 'tests', 'make-fixtures.mjs'), fixture], { stdio: 'pipe' })
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json' }
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.mjs': 'text/javascript', '.wasm': 'application/wasm' }
 const server = http.createServer((req, res) => {
   const file = path.join(dist, decodeURIComponent(new URL(req.url, 'http://x').pathname))
   if (!file.startsWith(dist) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
@@ -281,6 +281,57 @@ try {
   await page.close()
 } catch (err) {
   check('dark mode checks ran', false, String(err))
+}
+
+// ─── 1c. PDF files open in the same viewer ────────────────────────────────────
+
+try {
+  const pdf = path.join(work, 'test.pdf')
+  execFileSync(process.execPath, [path.join(root, 'tests', 'make-pdf.mjs'), pdf], { stdio: 'pipe' })
+  const pdfPixel = (page, x, y) =>
+    page.evaluate(([cx, cy]) => {
+      const c = document.querySelector('main canvas')
+      const k = c.width / 612
+      return Array.from(c.getContext('2d').getImageData(Math.round(cx * k), Math.round(cy * k), 1, 1).data.slice(0, 3))
+    }, [x, y])
+
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  const problems = watch(page)
+  await openDeck(page, pdf)
+  await page.waitForSelector('[aria-label="Slide 2"]', { timeout: 30000 })
+  await settle(page)
+  check('pdf: opens with two pages', (await page.locator('aside button[aria-label^=Slide]').count()) === 2)
+  const red = await pdfPixel(page, 170, 340)
+  check('pdf: a red rectangle is drawn', near(red, [255, 0, 0], 30), 'got ' + red)
+  check('pdf: the page background is white', near(await pdfPixel(page, 500, 600), [255, 255, 255], 6))
+  const ink = await page.evaluate(() => {
+    const c = document.querySelector('main canvas')
+    const k = c.width / 612
+    const d = c.getContext('2d').getImageData(Math.round(72 * k), Math.round(56 * k), Math.round(400 * k), Math.round(50 * k)).data
+    let n = 0
+    for (let i = 0; i < d.length; i += 4) if (d[i] < 80 && d[i + 1] < 80 && d[i + 2] < 80) n++
+    return n
+  })
+  check('pdf: heading text is drawn', ink > 100, 'dark pixels: ' + ink)
+  await page.keyboard.press('Control+f')
+  await page.fill('[role=search] input', 'zebra')
+  await page.waitForSelector('[role=search] li')
+  check('pdf: search finds text on page 2', (await page.locator('[role=search] li').first().innerText()).includes('2'))
+  await page.keyboard.press('Escape')
+  await page.click('[aria-label="Slide 2"]')
+  await settle(page)
+  check('pdf: page 2 shows', (await page.locator('header').innerText()).includes('2 / 2'))
+  check('pdf: no console errors', problems.length === 0, problems.join(' | '))
+  await page.close()
+
+  const dark = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme: 'dark' })
+  await openDeck(dark, pdf)
+  await settle(dark)
+  const bg = await pdfPixel(dark, 500, 600)
+  check('pdf: dark mode draws the page dark', bg.every((v) => v < 45), 'got ' + bg)
+  await dark.close()
+} catch (err) {
+  check('pdf checks ran', false, String(err))
 }
 
 // ─── 2. Optional: your own decks (every deck must open and draw every slide) ──

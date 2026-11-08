@@ -2,6 +2,7 @@
 // Works on the slide model produced by the parser (shapes, tables, groups, charts).
 
 import type { Slide } from './pptx'
+import { isPdfPage } from './pdf'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Piece = { y: number; x: number; lines: string[] }
@@ -45,6 +46,7 @@ const cache = new WeakMap<Slide, string[]>()
 export function slideLines(slide: Slide): string[] {
   const cached = cache.get(slide)
   if (cached) return cached
+  if (isPdfPage(slide)) return slide.lines
   const pieces: Piece[] = []
   collect(slide.shapes as any[], pieces)
   pieces.sort((a, b) => Math.round(a.y / 10) - Math.round(b.y / 10) || a.x - b.x)
