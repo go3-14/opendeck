@@ -31,6 +31,7 @@ VIEW AND FIND
 • Fits the slide to your window; zoom when you need to
 • Slide list with thumbnails; scroll the mouse wheel to change slides
 • Dark mode with colour-inverted slides (switch Auto, Light or Dark, and turn inversion off if you like)
+• Select and copy text straight from a slide or PDF page
 • Search slide text, tables and speaker notes (Ctrl+F)
 
 PRESENT

@@ -69,6 +69,7 @@ Firefox and Zen, building from source and the optional "open downloads here" set
 - Slide list with lazily rendered thumbnails.
 - **Dark mode:** an Auto / Light / Dark toggle in the header (saved in the browser). In dark mode slide colours are inverted with their hue kept (a white slide turns near-black, black text turns near-white) while pictures are left alone; the *Invert slides in dark mode* switch in the More menu and Settings turns that off. Printing, copying and PNG export are never inverted.
 - **Mouse wheel:** scroll to change slides (one slide per flick). When the slide is zoomed in beyond the window, the wheel scrolls it and changes slides at its edge. `Ctrl` + wheel zooms. The same works in the slideshow.
+- **Select and copy text:** drag over the words on a slide or PDF page, then `Ctrl+C`. (Slides are drawn on a canvas; an invisible text layer sits on top, so charts' labels are not selectable.)
 - Search slide text, table cells and speaker notes (`Ctrl+F`). Matching slides are marked in the slide list.
 - Copy the current slide as an image or as text, copy a text outline of the whole deck (with notes), print or save as PDF, or export every slide as a ZIP of PNGs.
 
@@ -117,6 +118,14 @@ Then in `chrome://extensions`:
 On first install, the Settings page opens. To have downloads and right-clicked links open in the viewer, turn on **Open downloads and links here**. This grants optional access to websites, which you can remove again at any time. Everything else works without it. To open files from your computer directly (double-click or `file://` links), also enable **Allow access to file URLs** for the extension on `chrome://extensions`.
 
 ## Using it
+
+### Opening files from your computer
+
+Windows hands a double-clicked file to the app it has chosen (PowerPoint, your PDF reader), never to an extension, and an extension cannot register itself as the handler. These routes do open local files in Opendeck:
+
+- the toolbar button, then **Choose file**, or drag the file onto the Opendeck tab;
+- drag the file onto any browser tab, or open its `file:///…` address: a `.pptx` is caught as a download and a `.pdf` is redirected, both when *Open downloads and links here* is on and "Allow access to file URLs" is on for the extension;
+- for PDFs: right-click the file, **Open with**, Edge or Chrome (or make the browser your PDF app), and a double-click opens it in Opendeck.
 
 ### Keyboard shortcuts
 
@@ -332,7 +341,7 @@ PRIVACY.md
 | Animation | Entrance and exit effects of whole shapes, one click at a time | Emphasis, motion paths, timing and easing, text builds by paragraph, triggers |
 | Transitions | Fade, push, cover, wipe (other effects fall back to a fade) | Other effect types and sounds |
 | Media | | Video and audio |
-| PDF | Viewing, text search, slideshow, printing, dark mode; password-protected files (the password is asked for) | Forms, annotations, signing, text selection. Links are taken over for URLs ending in `.pdf`, not for local `file://` PDFs |
+| PDF | Viewing, text selection and search, slideshow, printing, dark mode; password-protected files (the password is asked for) | Forms, annotations, signing. Links are taken over for addresses ending in `.pdf`, including local `file://` PDFs when "Allow access to file URLs" is on |
 
 Text metrics depend on the fonts installed on your computer, so line breaks can differ slightly from PowerPoint. The speaker view lives in the same window and does not mirror to a second screen.
 

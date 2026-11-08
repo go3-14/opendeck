@@ -334,6 +334,70 @@ try {
   check('pdf checks ran', false, String(err))
 }
 
+// ─── 1d. Text on the slide can be selected and copied ─────────────────────────
+
+try {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  const problems = watch(page)
+  await openDeck(page, fixture)
+  await page.waitForSelector('[aria-label="Slide 8"]')
+  await page.click('[aria-label="Slide 1"]')
+  await settle(page)
+  await page.waitForSelector('[data-text-layer=slide] span')
+  const sameSize = await page.evaluate(() => {
+    const layer = document.querySelector('[data-text-layer=slide]').getBoundingClientRect()
+    const canvas = document.querySelector('main canvas').getBoundingClientRect()
+    return Math.abs(layer.width - canvas.width) < 2 && Math.abs(layer.height - canvas.height) < 2
+  })
+  check('text layer covers exactly the slide canvas', sameSize)
+
+  // Drag from the start of the title to its end with the real mouse.
+  const title = await page.evaluate(() => {
+    const spans = [...document.querySelectorAll('[data-text-layer=slide] span')]
+    const words = spans.filter((s) => /Placeholder|inheritance/.test(s.textContent))
+    const first = words[0].getBoundingClientRect()
+    const last = words[words.length - 1].getBoundingClientRect()
+    return { x1: first.left + 2, y1: first.top + first.height / 2, x2: last.right - 2, y2: last.top + last.height / 2 }
+  })
+  await page.mouse.move(title.x1, title.y1)
+  await page.mouse.down()
+  await page.mouse.move(title.x2, title.y2, { steps: 8 })
+  await page.mouse.up()
+  const picked = await page.evaluate(() => String(window.getSelection()))
+  check('dragging over the title selects its words', /Placeholder\s+inheritance/.test(picked), JSON.stringify(picked))
+
+  const all = await page.evaluate(() => document.querySelector('[data-text-layer=slide]').textContent)
+  check('slide text includes the body bullets', all.includes('Placeholder inheritance') && all.length > 40, all.slice(0, 80))
+
+  await page.click('[aria-label="Slide 3"]')
+  await settle(page)
+  await page.waitForFunction(() => document.querySelector('[data-text-layer=slide]')?.textContent.includes('Merged header'))
+  check('table cell text can be selected', true)
+
+  check('thumbnails have no text layer', (await page.locator('aside [data-text-layer]').count()) === 0)
+  check('selectable text: no console errors', problems.length === 0, problems.join(' | '))
+  await page.close()
+
+  const pdf = path.join(work, 'test.pdf')
+  const pdfPage = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  await openDeck(pdfPage, pdf)
+  await settle(pdfPage)
+  await pdfPage.waitForSelector('[data-text-layer=pdf] span', { timeout: 15000 })
+  const pdfText = await pdfPage.evaluate(() => {
+    const layer = document.querySelector('[data-text-layer=pdf]')
+    const range = document.createRange()
+    range.selectNodeContents(layer)
+    const sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
+    return String(sel)
+  })
+  check('pdf: the page text can be selected', pdfText.includes('Opendeck PDF test page one'), JSON.stringify(pdfText))
+  await pdfPage.close()
+} catch (err) {
+  check('selectable text checks ran', false, String(err))
+}
+
 // ─── 2. Optional: your own decks (every deck must open and draw every slide) ──
 
 const inputs = process.argv.slice(2)
