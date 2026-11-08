@@ -7,7 +7,7 @@ Everything to paste into the Chrome Web Store developer dashboard (and Microsoft
 | Field | Value |
 | --- | --- |
 | Name | Opendeck |
-| Summary (132 characters max) | Free, open-source viewer for PowerPoint files, with search and a full-screen slideshow. Files never leave your device. |
+| Summary (132 characters max) | Free, open-source viewer for PowerPoint and PDF files, with search and a slideshow. Files never leave your device. |
 | Category | Productivity |
 | Language | English |
 | Icon | `public/icons/icon128.png` (also in the zip) |
@@ -18,14 +18,14 @@ Everything to paste into the Chrome Web Store developer dashboard (and Microsoft
 ## Description
 
 ```text
-Opendeck opens PowerPoint presentations right in your browser. No upload, no account, no server: your files are read and drawn on your own computer.
+Opendeck opens PowerPoint presentations and PDF files right in your browser. No upload, no account, no server: your files are read and drawn on your own computer.
 
 OPEN FILES YOUR WAY
 • Click the toolbar icon, choose a file, or drop it on the page
-• Right-click a presentation link and choose "Open in Opendeck"
-• Optional: open presentations you download straight in the viewer
+• Right-click a presentation or PDF link and choose "Open in Opendeck"
+• Optional: open presentations and PDFs you download, or links to .pdf files, straight in the viewer (turn it off any time to get the browser's own PDF viewer back)
 • Recent files are one click away
-• Supports .pptx, .ppsx, .potx and macro-enabled variants
+• Supports .pptx, .ppsx, .potx, macro-enabled variants and .pdf
 
 VIEW AND FIND
 • Fits the slide to your window; zoom when you need to
@@ -59,14 +59,15 @@ PowerPoint is a trademark of Microsoft Corporation. Opendeck is an independent p
 
 ## Single purpose
 
-> View PowerPoint presentation files in the browser. Every feature (opening, searching, presenting, copying, printing) serves that one purpose.
+> View documents (PowerPoint presentations and PDF files) in the browser. Every feature (opening, searching, presenting, copying, printing) serves that one purpose.
 
 ## Permission justifications
 
 | Permission | Justification to paste |
 | --- | --- |
-| `downloads` | Detects when a PowerPoint file starts downloading so it can be opened in the viewer instead. The download is only cancelled after the file has been read successfully; if anything fails, the normal download continues. |
-| `contextMenus` | Adds the single "Open in Opendeck" item when the user right-clicks a link to a presentation file. |
+| `downloads` | Detects when a PowerPoint or PDF file starts downloading so it can be opened in the viewer instead. The download is only cancelled after the file has been read successfully; if anything fails, the normal download continues. |
+| `contextMenus` | Adds the single "Open in Opendeck" item when the user right-clicks a link to a presentation or PDF file. |
+| `declarativeNetRequest` | One redirect rule, active only while the user has turned on "Open downloads and links here": a link to a .pdf file opens in the extension's viewer instead of the browser's PDF viewer. The rule only rewrites the address of the page being opened; it does not read or change any page content, and it is removed when the user turns the setting off. |
 | `notifications` | Tells the user when a file could not be opened, and (once) how to turn on opening downloads. |
 | Host access (`optional_host_permissions`, `<all_urls>`) | Optional, never requested at install. When the user turns on "Open downloads and links here" in Settings, the extension fetches the specific file the user just downloaded or right-clicked so it can be shown. The address can be on any website, which is why all sites are requested. It is not used to read or modify web pages, and it can be turned off at any time. |
 
@@ -83,7 +84,7 @@ No account or login is needed.
 2. Click the toolbar icon, choose "Choose file", and select store/sample/Quarterly Business Review.pptx from the source repository (https://github.com/go3-14/opendeck/tree/master/store/sample), or any .pptx file.
 3. Use the slide list, Search (Ctrl+F, try "growth"), and the More menu (copy, print, export).
 4. Click Present (or press F5) for the slideshow; press S for the speaker view, ? for all shortcuts, Esc to leave.
-5. Optional feature: in Settings press "Turn on", then click a link to any .pptx file on the web; it opens in the viewer instead of downloading. Right-clicking such a link also offers "Open in Opendeck".
+5. Optional feature: in Settings press "Turn on", then click a link to any .pptx file on the web; it opens in the viewer instead of downloading. The same goes for a link to any .pdf file. Right-clicking such a link also offers "Open in Opendeck".
 
 The extension makes no network requests of its own; it only fetches a file the user explicitly downloads or right-clicks, and only after the user grants the optional access.
 ```

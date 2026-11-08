@@ -21,7 +21,7 @@ Search, slideshow with animations, dark mode, printing. Your files never leave y
 
 - **Private by design.** Files are parsed and drawn on your device. No server, no upload, no tracking.
 - **No Office needed.** A purpose-built renderer for the Office Open XML format (text, shapes, tables, charts, SmartArt, pictures), written in plain JavaScript on the Canvas API.
-- **Opens however you like.** Toolbar, drag and drop, downloads, right-click on a link, or the recent-files list. Handles `.pptx`, `.ppsx`, `.potx` and the macro-enabled variants.
+- **Opens however you like.** Toolbar, drag and drop, downloads, right-click on a link, or the recent-files list. Handles `.pptx`, `.ppsx`, `.potx`, the macro-enabled variants and **PDF files**.
 - **A real slideshow.** Full screen with animation builds and transitions, speaker view, laser pointer, pen and slide grid.
 - **Dark mode.** Slide colours are inverted with their hue kept; pictures stay as they are.
 
@@ -58,7 +58,8 @@ Firefox and Zen, building from source and the optional "open downloads here" set
 
 - Toolbar icon, file picker, or drop a file anywhere on the page.
 - Downloads of presentation files open in the viewer instead of being saved. The native download is only cancelled after the file was read successfully, so a failure never loses the file.
-- Right-click a presentation link and choose **Open in Opendeck**.
+- Right-click a presentation or PDF link and choose **Open in Opendeck**.
+- **PDFs:** with *Open downloads and links here* on, PDF downloads and links to `.pdf` files open in Opendeck instead of the browser's own PDF viewer (turn the setting off to get that viewer back). PDFs get the same slide list, zoom, search, slideshow, printing and dark mode. Page rendering uses [pdf.js](https://github.com/mozilla/pdf.js), loaded only when you open a PDF.
 - Recent files (the last five) on the start screen and in the **More** menu.
 - `.ppsx` shows open straight into the slideshow.
 
@@ -331,6 +332,7 @@ PRIVACY.md
 | Animation | Entrance and exit effects of whole shapes, one click at a time | Emphasis, motion paths, timing and easing, text builds by paragraph, triggers |
 | Transitions | Fade, push, cover, wipe (other effects fall back to a fade) | Other effect types and sounds |
 | Media | | Video and audio |
+| PDF | Viewing, text search, slideshow, printing, dark mode; password-protected files (the password is asked for) | Forms, annotations, signing, text selection. Links are taken over for URLs ending in `.pdf`, not for local `file://` PDFs |
 
 Text metrics depend on the fonts installed on your computer, so line breaks can differ slightly from PowerPoint. The speaker view lives in the same window and does not mirror to a second screen.
 
@@ -340,6 +342,7 @@ Text metrics depend on the fonts installed on your computer, so line breaks can 
 | --- | --- |
 | `downloads` | Notice a presentation download, read it, then open it in the viewer instead. |
 | `contextMenus` | The *Open in Opendeck* item on links. |
+| `declarativeNetRequest` | One redirect rule, active only while website access is on, that sends links to `.pdf` files to the viewer. |
 | `notifications` | Report a file that could not be opened, or how to enable opening downloads. |
 | Website access (optional) | Fetch the file you downloaded or right-clicked. Requested from Settings, never at install. |
 
@@ -372,7 +375,7 @@ npm test                     # generated fixture deck
 npm test -- path/to/decks    # also open every .pptx/.ppsx in a folder, or single files
 ```
 
-`npm test` runs the built viewer in a real Chrome (via `playwright-core`; set `CHROME_PATH` if Chrome is not in a standard location). It generates a deck that exercises inheritance, groups, crops, colour maps, tables, SmartArt, freeforms, shadows, charts, notes and animations; checks pixels on the canvas, search, the slideshow, the speaker view and recent files; and fails on any console error. With extra paths it opens each deck and checks that every slide draws. See [tests/README.md](tests/README.md) for the deck contents. Extension-only behaviour (downloads, the link menu, the permission prompt) is checked by hand in the built extension.
+`npm test` runs the built viewer in a real Chrome (via `playwright-core`; set `CHROME_PATH` if Chrome is not in a standard location). It generates a deck that exercises inheritance, groups, crops, colour maps, tables, SmartArt, freeforms, shadows, charts, notes and animations; checks pixels on the canvas, search, the slideshow, the speaker view and recent files; and fails on any console error. With extra paths it opens each deck and checks that every slide draws. See [tests/README.md](tests/README.md) for the deck contents. `npm run test:extension` loads the built extension in Edge (or Chromium via `CHROME_PATH`) and checks the PDF link redirect; it is skipped where no browser allows loading unpacked extensions. The rest of the extension-only behaviour (downloads, the link menu, the permission prompt) is checked by hand in the built extension.
 
 ### Visual regression
 

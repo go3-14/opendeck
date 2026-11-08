@@ -20,7 +20,7 @@ import shotMenu from '../store/screenshots/3-more-menu.jpg'
 import shotDark from '../store/screenshots/4-dark.jpg'
 import shotSpeaker from '../store/screenshots/5-speaker-view.jpg'
 
-const REPO = 'https://github.com/go3-14/pptx_viewer_extension'
+const REPO = 'https://github.com/go3-14/opendeck'
 const SECTIONS = ['features', 'how', 'privacy', 'support']
 
 const showcase = [
@@ -34,7 +34,7 @@ const features = [
   ['Dark mode', 'Auto, light or dark, with slide colours inverted and pictures left alone. Slides fit your window, or zoom in.'],
   ['Draws what is in the file', 'Master and layout styles, shapes, pictures, tables, charts and SmartArt. Content it cannot draw is clearly marked.'],
   ['Presenter tools', 'Laser pointer, pen, slide grid, black and white screens, jump to any slide, and mouse-wheel paging.'],
-  ['Many formats', '.pptx, .ppsx, .potx and the macro-enabled variants.'],
+  ['Many formats', '.pptx, .ppsx, .potx, the macro-enabled variants and PDF files.'],
   ['Open source', 'MIT licensed, built in the open. Read the code, report problems, send fixes.'],
 ]
 
@@ -49,6 +49,7 @@ const faq = [
   ['Why did downloads not open in the viewer?', "That feature is optional. Open the extension's Settings and turn on Open downloads and links here. Your browser then asks for access to websites, which is only used to read the file you just downloaded."],
   ['How do I open a file from my computer by double-clicking?', "Turn on Allow access to file URLs for Opendeck on the browser's extensions page. Browsers keep that switch separate and extensions cannot turn it on for you."],
   ['Does it edit presentations?', 'No. Opendeck is a viewer: open, search, present, copy, print and export. Your files are never changed.'],
+  ['Can it open PDFs?', 'Yes. PDFs open in the same viewer, with search, slideshow, printing and dark mode. With "Open downloads and links here" on, links to .pdf files open in Opendeck instead of the browser\'s PDF viewer; turn it off to get that viewer back.'],
   ['Is it really free?', 'Yes. It is open source under the MIT licence, with no ads, no accounts and no paid tier.'],
 ]
 
