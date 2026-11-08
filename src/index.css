@@ -128,9 +128,16 @@
     @apply font-sans;
     }
 }
-/* Printing / Save as PDF: one slide image per landscape page, nothing else. */
+/* Printing: one slide image per page, nothing else. Each page follows the slide: portrait slides on portrait sheets. */
 @page {
+  margin: 0;
+}
+@page landscape {
   size: landscape;
+  margin: 0;
+}
+@page portrait {
+  size: portrait;
   margin: 0;
 }
 
@@ -146,6 +153,14 @@
     height: 100vh;
     object-fit: contain;
     break-after: page;
+  }
+
+  .print-pages img.landscape {
+    page: landscape;
+  }
+
+  .print-pages img.portrait {
+    page: portrait;
   }
 
   .print-pages img:last-child {

@@ -4,6 +4,7 @@ import { parseThemeChain } from '@/renderer/parse-theme.js'
 import { parseSlide, parseSlideSize } from '@/renderer/parse-slide.js'
 import { renderSlide } from '@/renderer/render-canvas.js'
 import { clearXmlCache } from '@/renderer/xml.js'
+import { saveBlob } from './download'
 
 export type Slide = ReturnType<typeof parseSlide>
 
@@ -70,10 +71,5 @@ export async function exportSlidesAsZip(
   }
   onProgress?.(slides.length, slides.length)
 
-  const url = URL.createObjectURL(await zip.generateAsync({ type: 'blob' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${filename.replace(/\.pptx$/i, '')}_slides.zip`
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 5000)
+  saveBlob(await zip.generateAsync({ type: 'blob' }), `${filename.replace(/\.[^.]+$/, '')}_slides.zip`)
 }

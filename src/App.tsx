@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Presenter from '@/components/Presenter'
-import { PrintPages } from '@/components/PrintPages'
+import { PrintPages, type PrintPage } from '@/components/PrintPages'
 import { SearchBar } from '@/components/SearchBar'
 import { SettingsDialog } from '@/components/SettingsDialog'
 import { SlideCanvas, Thumbnail } from '@/components/SlideCanvas'
@@ -15,7 +15,9 @@ import { MonitorIcon, MoonIcon, SunIcon } from '@/components/ui/icons'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { ACCEPT, formatSize, isPdfFile, isPresentationFile, isSlideshowFile } from '@/lib/files'
-import { PdfCancelled, loadPdf, looksLikePdf } from '@/lib/pdf'
+import { PdfCancelled, isPdfPage, loadPdf, looksLikePdf } from '@/lib/pdf'
+import { mimeFor, saveBlob } from '@/lib/download'
+import { exportPdf } from '@/lib/pdfExport'
 import { consumeHandoff } from '@/lib/idb'
 import { permissionsSupported } from '@/lib/permissions'
 import { prefetchAround } from '@/lib/prefetch'
@@ -50,6 +52,9 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null)
   const [area, setArea] = useState({ w: 0, h: 0 })
   const [exporting, setExporting] = useState<string | null>(null)
+  const [exportingPdf, setExportingPdf] = useState<string | null>(null)
+  // The file exactly as it was opened, so it can be saved again ("Download original").
+  const [original, setOriginal] = useState<{ bytes: ArrayBuffer; name: string } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [presenting, setPresenting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -60,7 +65,7 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
-  const [printPages, setPrintPages] = useState<string[] | null>(null)
+  const [printPages, setPrintPages] = useState<PrintPage[] | null>(null)
 
   const refreshRecent = useCallback(() => {
     listRecent().then(setRecent).catch(() => setRecent([]))
@@ -76,6 +81,7 @@ export default function App() {
         ? await loadPdf(bytes, setMessage, askPdfPassword)
         : await loadPptx(bytes, setMessage)
       setSlides(loaded)
+      setOriginal({ bytes, name })
       setFilename(name)
       setIndex(0)
       setStatus('ready')
@@ -286,10 +292,10 @@ export default function App() {
   // Printing / Save as PDF: render every slide, show them as pages, then open the print dialog.
   const printDeck = async () => {
     try {
-      const urls: string[] = []
+      const urls: PrintPage[] = []
       for (let i = 0; i < slides.length; i++) {
         showNotice(`Preparing pages ${i + 1}/${slides.length}…`, 0)
-        urls.push(await slideToJpegUrl(slides[i]))
+        urls.push({ src: await slideToJpegUrl(slides[i]), portrait: slides[i].height > slides[i].width })
         await new Promise((r) => setTimeout(r, 0))
       }
       showNotice(null)
@@ -361,6 +367,23 @@ export default function App() {
       setExporting(null)
     }
   }
+
+  const downloadOriginal = () => {
+    if (!original) return
+    saveBlob(new Blob([original.bytes], { type: mimeFor(original.name) }), original.name)
+  }
+
+  const exportPdfFile = async () => {
+    setExportingPdf('Exporting PDF…')
+    try {
+      await exportPdf(slides, filename, (done, total) => setExportingPdf(`Exporting PDF ${done}/${total}`))
+    } catch (err) {
+      setError(`PDF export failed: ${err instanceof Error ? err.message : err}`)
+    } finally {
+      setExportingPdf(null)
+    }
+  }
+  const isPdfDocument = slides.length > 0 && isPdfPage(slides[0])
 
   const settingsEl = (
     <SettingsDialog
@@ -544,7 +567,15 @@ export default function App() {
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Whole presentation</DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => void copyText('all')}>Copy text outline</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void printDeck()}>Print or save as PDF…</DropdownMenuItem>
+                <DropdownMenuItem disabled={!original} onClick={downloadOriginal}>
+                  {isPdfDocument ? 'Download original PDF' : 'Download original file'}
+                </DropdownMenuItem>
+                {!isPdfDocument && (
+                  <DropdownMenuItem disabled={!!exportingPdf} onClick={() => void exportPdfFile()}>
+                    {exportingPdf ?? 'Export as PDF'}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => void printDeck()}>Print…</DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={!!exporting} onClick={exportAll}>
