@@ -71,9 +71,13 @@ export function SettingsDialog({ open, onOpenChange, onClearRecent }: Props) {
 
           <Section title="Open downloads and links here">
             <p className="text-muted-foreground">
-              To show a presentation you download or right-click, the extension has to read that file once. Turn this on
-              to allow it; you can turn it off at any time. Without it, you can still open files with the button or by
-              dropping them on this page.
+              To show a presentation or PDF you download or right-click, the extension has to read that file once. Turn
+              this on to allow it; you can turn it off at any time. Without it, you can still open files with the button
+              or by dropping them on this page.
+            </p>
+            <p className="text-muted-foreground">
+              While this is on, links to .pdf files also open here instead of in the browser’s own PDF viewer. Turn it off
+              to get the browser’s viewer back.
             </p>
             {permissionsSupported ? (
               <div className="flex items-center gap-3 pt-1">
@@ -81,7 +85,7 @@ export function SettingsDialog({ open, onOpenChange, onClearRecent }: Props) {
                   {granted ? 'Turn off' : 'Turn on'}
                 </Button>
                 <span className="text-muted-foreground" role="status">
-                  {granted === null ? '' : granted ? 'On: downloads open in the viewer' : 'Off'}
+                  {granted === null ? '' : granted ? 'On: downloads and PDF links open in the viewer' : 'Off'}
                 </span>
               </div>
             ) : (

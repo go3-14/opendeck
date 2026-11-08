@@ -152,7 +152,9 @@ export default function App() {
   const urlStarted = useRef(false)
   useEffect(() => {
     const params = new URLSearchParams(location.search)
-    const src = params.get('src')
+    // The link is everything after "src=" (it may carry its own ? and & characters).
+    const raw = /[?&]src=(.*)$/s.exec(location.search)?.[1]
+    const src = raw && (/^https?%3A/i.test(raw) ? decodeURIComponent(raw) : raw)
     if (params.get('mode') !== 'url' || !src || urlStarted.current) return
     urlStarted.current = true
     setStatus('loading')

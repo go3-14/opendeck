@@ -1,7 +1,7 @@
 {
   "name": "pptx-viewer-extension",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/copy-pdfjs-assets.mjs && vite",
@@ -16,7 +16,8 @@
     "site": "vite --config vite.site.config.ts",
     "site:build": "tsc --noEmit && vite build --config vite.site.config.ts",
     "test:visual": "node tests/visual.mjs",
-    "bench": "node tests/bench.mjs"
+    "bench": "node tests/bench.mjs",
+    "test:extension": "node tests/extension.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

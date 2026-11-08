@@ -7,7 +7,8 @@ const VIEWER_URL = chrome.runtime.getURL('viewer.html');
 const IDB_DB_NAME = 'pptx_viewer';
 const IDB_STORE_NAME = 'pptx_store';
 // OOXML presentations: presentation, slideshow and template files (and their macro-enabled variants).
-const PRESENTATION_EXTENSIONS = ['pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm'];
+// PDFs are handled too (rendered with pdf.js in the viewer).
+const PRESENTATION_EXTENSIONS = ['pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm', 'pdf'];
 const EXTENSION_RE = new RegExp(`\\.(${PRESENTATION_EXTENSIONS.join('|')})$`, 'i');
 const PRESENTATION_MIMES = new Set([
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -16,6 +17,7 @@ const PRESENTATION_MIMES = new Set([
   'application/vnd.ms-powerpoint.presentation.macroenabled.12',
   'application/vnd.ms-powerpoint.slideshow.macroenabled.12',
   'application/vnd.ms-powerpoint.template.macroenabled.12',
+  'application/pdf',
 ]);
 const STALE_HANDOFF_MS = 60 * 60 * 1000; // 1 hour
 
@@ -49,6 +51,40 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') chrome.tabs.create({ url: SETTINGS_URL });
 });
 
+// ─── Take over links to .pdf files ───────────────────────────────────────────
+// While website access is granted, opening a URL that ends in .pdf is redirected
+// to the viewer, which fetches and draws the file. The redirect rule is removed
+// again when the access is taken away, which restores the browser's own viewer.
+const PDF_RULE_ID = 1;
+
+async function syncPdfRule() {
+  try {
+    const access = await hasHostAccess();
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [PDF_RULE_ID],
+      addRules: access
+        ? [{
+            id: PDF_RULE_ID,
+            priority: 1,
+            action: { type: 'redirect', redirect: { regexSubstitution: VIEWER_URL + '?mode=url&src=\\1' } },
+            condition: {
+              regexFilter: '^(https?://[^?#]*\\.pdf(?:\\?[^#]*)?)(?:#.*)?$',
+              isUrlFilterCaseSensitive: false,
+              resourceTypes: ['main_frame'],
+            },
+          }]
+        : [],
+    });
+  } catch (err) {
+    console.warn('[Opendeck] Could not update the PDF rule:', err);
+  }
+}
+
+chrome.runtime.onInstalled.addListener(syncPdfRule);
+chrome.runtime.onStartup.addListener(syncPdfRule);
+chrome.permissions.onAdded.addListener(syncPdfRule);
+chrome.permissions.onRemoved.addListener(syncPdfRule);
+
 // Deduplication: prevent processing the same download twice
 const processingIds = new Set();
 // Downloads whose filename/MIME were not known yet at onCreated time.
@@ -69,7 +105,7 @@ function urlPathIsPresentation(url) {
   }
 }
 
-function isPptx(item) {
+function isSupportedDocument(item) {
   const byName = !!item.filename && EXTENSION_RE.test(item.filename);
   const byMime = !!item.mime && PRESENTATION_MIMES.has(item.mime.toLowerCase());
   const byUrl = urlPathIsPresentation(item.finalUrl) || urlPathIsPresentation(item.url);
@@ -92,7 +128,7 @@ function isFetchable(url) {
 
 function nameFromUrl(url) {
   try {
-    return decodeURIComponent(new URL(url).pathname.split('/').pop()) || 'presentation.pptx';
+    return decodeURIComponent(new URL(url).pathname.split('/').pop()) || 'document';
   } catch {
     return 'presentation.pptx';
   }
@@ -102,7 +138,7 @@ function displayName(item) {
   const fromPath = (item.filename || '').split(/[\\/]/).pop();
   if (fromPath) return fromPath;
   try {
-    return decodeURIComponent(new URL(item.finalUrl || item.url).pathname.split('/').pop()) || 'presentation.pptx';
+    return decodeURIComponent(new URL(item.finalUrl || item.url).pathname.split('/').pop()) || 'document';
   } catch {
     return 'presentation.pptx';
   }
@@ -112,7 +148,7 @@ function displayName(item) {
 // The native download is left alone until the bytes are safely stored. If
 // anything fails, the user still gets their normal download.
 chrome.downloads.onCreated.addListener((item) => {
-  if (isPptx(item)) {
+  if (isSupportedDocument(item)) {
     handlePptxDownload(item);
   } else if (isUndecided(item)) {
     undecidedIds.add(item.id);
@@ -126,7 +162,7 @@ chrome.downloads.onChanged.addListener(async (delta) => {
   undecidedIds.delete(delta.id);
   try {
     const [item] = await chrome.downloads.search({ id: delta.id });
-    if (item && isPptx(item)) handlePptxDownload(item);
+    if (item && isSupportedDocument(item)) handlePptxDownload(item);
   } catch (err) {
     console.error('[Opendeck] Could not look up download:', err);
   }
