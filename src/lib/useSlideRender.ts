@@ -3,6 +3,7 @@ import { renderSlide } from '@/renderer/render-canvas.js'
 import type { Slide } from './pptx'
 import { thumbnailLimiter } from './renderQueue'
 import { useInvert } from './theme'
+import type { TextBox } from './textBoxes'
 
 interface Options {
   /** Keep the finished slide so showing it again is instant (main canvas). */
@@ -15,6 +16,8 @@ interface Options {
   step?: number
   /** Called right after the canvas was updated with a finished slide. */
   onDrawn?: () => void
+  /** Receives the words painted on the slide (for selectable text); null for PDF pages. */
+  onText?: (boxes: TextBox[] | null) => void
 }
 
 /**
@@ -29,13 +32,15 @@ export function useSlideRender(
   slide: Slide | undefined,
   scale: number,
   dpr?: number,
-  { cache = false, limited = false, enabled = true, step, onDrawn }: Options = {},
+  { cache = false, limited = false, enabled = true, step, onDrawn, onText }: Options = {},
 ) {
   // Dark mode: draw with inverted colours (the canvas redraws when the setting changes).
   const invert = useInvert()
   // Latest callback without re-running the render effect when it changes.
   const onDrawnRef = useRef(onDrawn)
   onDrawnRef.current = onDrawn
+  const onTextRef = useRef(onText)
+  onTextRef.current = onText
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -45,7 +50,10 @@ export function useSlideRender(
     const task = () =>
       controller.signal.aborted
         ? Promise.resolve(false)
-        : renderSlide(slide, canvas, scale, dpr, { signal: controller.signal, cache, step, invert }).then((drawn: boolean) => {
+        : renderSlide(slide, canvas, scale, dpr, {
+            signal: controller.signal, cache, step, invert,
+            onText: onText ? (boxes: TextBox[] | null) => onTextRef.current?.(boxes) : undefined,
+          }).then((drawn: boolean) => {
             if (drawn) onDrawnRef.current?.()
             return drawn
           })

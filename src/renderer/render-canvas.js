@@ -547,6 +547,13 @@ function layoutText(ctx, text, innerW, K, fontScale, lnReduction) {
   return { lines, height: y };
 }
 
+/**
+ * While a slide is drawn for the viewer, every word that is painted is also recorded here
+ * (position, font and the canvas transform), so the viewer can lay selectable text over the canvas.
+ */
+let textSink = null;
+let textLineId = 0;
+
 /** Draws a text block inside the box (x, y, w, h) in current-transform pixels. */
 function drawTextBlock(ctx, text, x, y, w, h, K) {
   if (!text?.paragraphs?.length || w <= 0) return;
@@ -577,6 +584,7 @@ function drawTextBlock(ctx, text, x, y, w, h, K) {
 
   for (const line of layout.lines) {
     const base = top + line.baseline;
+    const lineId = textLineId++;
 
     if (line.bullet) {
       const { run, def, label, size } = line.bullet;
@@ -596,10 +604,20 @@ function drawTextBlock(ctx, text, x, y, w, h, K) {
     else if (line.align === 'r') cx += line.avail - line.w;
 
     for (const tok of line.tokens) {
+      if (tok.space && textSink && textSink.length && textSink[textSink.length - 1].line === lineId) {
+        textSink[textSink.length - 1].sp = true; // a space follows this word (copy keeps it)
+      }
       if (!tok.space) {
         ctx.font = tok.font;
         ctx.fillStyle = tok.color;
         ctx.fillText(tok.str, cx, base + tok.dy);
+        if (textSink) {
+          const m = ctx.getTransform();
+          textSink.push({
+            str: tok.str, x: cx, y: base + tok.dy, w: tok.w, size: tok.size, font: tok.font,
+            m: [m.a, m.b, m.c, m.d, m.e, m.f], line: lineId, sp: false,
+          });
+        }
         if (tok.underline || tok.strike) {
           ctx.strokeStyle = tok.color;
           ctx.lineWidth = Math.max(0.5, tok.size / 18);
@@ -840,10 +858,15 @@ function drawSlideOffscreen(slide, scale, dpr, step, invert) {
   }
 
   hiddenNow = hiddenIdsFor(slide, step);
+  textSink = [];
+  textLineId = 0;
   try {
     for (const shape of shapes || []) drawShapeDispatch(ctx, shape, scale); // z-order = array order
+    // The canvas was scaled by dpr: express the transforms in CSS pixels at this render scale.
+    off.textBoxes = textSink.map((b) => ({ ...b, m: b.m.map((v) => v / dpr) }));
   } finally {
     hiddenNow = null;
+    textSink = null;
   }
   return off;
 }
@@ -870,16 +893,17 @@ function commit(canvas, off, scale, slide) {
  * @param {HTMLCanvasElement} canvas
  * @param {number} scale  CSS pixels per point (1 = 1pt = 1px)
  * @param {number} [dpr]  defaults to window.devicePixelRatio
- * @param {{ signal?: AbortSignal, cache?: boolean, step?: number, invert?: boolean }} [options]
+ * @param {{ signal?: AbortSignal, cache?: boolean, step?: number, invert?: boolean, onText?: (boxes: any[] | null) => void }} [options]
  *        signal: abandon the render (canvas untouched) if aborted;
  *        cache: keep the finished slide so showing it again is instant;
  *        step: draw the slide after this many animation clicks (0 = as it first
  *        appears); omit to draw every shape, as a static view does;
- *        invert: dark mode, draw with inverted colours (pictures are left alone)
+ *        invert: dark mode, draw with inverted colours (pictures are left alone);
+ *        onText: receives the painted words (position, font, transform) after the canvas was updated
  * @returns {Promise<boolean>} true if the canvas was updated, false if aborted
  */
 export async function renderSlide(
-  slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1, { signal, cache = false, step, invert = false } = {},
+  slideModel, canvas, scale = 1, dpr = window.devicePixelRatio || 1, { signal, cache = false, step, invert = false, onText } = {},
 ) {
   const { width, height } = slideModel;
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -913,5 +937,6 @@ export async function renderSlide(
 
   if (signal?.aborted) return false;
   commit(canvas, off, scale, slideModel);
+  onText?.(off.textBoxes ?? null);
   return true;
 }

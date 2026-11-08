@@ -2,18 +2,24 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { Slide } from '@/lib/pptx'
 import { useSlideRender } from '@/lib/useSlideRender'
 import { cn } from '@/lib/utils'
+import type { TextBox } from '@/lib/textBoxes'
+import { SlideTextLayer } from './SlideTextLayer'
 
-/** The main, full-size slide. */
+/** The main, full-size slide, with selectable text laid over it. */
 export function SlideCanvas({ slide, zoom }: { slide: Slide; zoom: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
-  useSlideRender(ref, slide, zoom, undefined, { cache: true })
+  const [boxes, setBoxes] = useState<TextBox[] | null>(null)
+  useSlideRender(ref, slide, zoom, undefined, { cache: true, onText: setBoxes })
   return (
-    <canvas
-      ref={ref}
-      className="block border bg-white dark:bg-neutral-900"
-      style={{ width: slide.width * zoom, height: slide.height * zoom }}
-      aria-label="Current slide"
-    />
+    <div className="relative" style={{ width: slide.width * zoom, height: slide.height * zoom }}>
+      <canvas
+        ref={ref}
+        className="block border bg-white dark:bg-neutral-900"
+        style={{ width: slide.width * zoom, height: slide.height * zoom }}
+        aria-label="Current slide"
+      />
+      <SlideTextLayer slide={slide} zoom={zoom} boxes={boxes} />
+    </div>
   )
 }
 

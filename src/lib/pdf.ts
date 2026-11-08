@@ -127,3 +127,23 @@ export async function loadPdf(
   if (!pages.length) throw new Error('This PDF has no pages.')
   return pages as unknown as Slide[]
 }
+
+/**
+ * Fills `container` with pdf.js's invisible, selectable text for one page at the given
+ * scale (CSS pixels per point). Returns a function that cancels a layer still being built.
+ */
+export async function renderPdfTextLayer(page: any, container: HTMLElement, scale: number): Promise<() => void> {
+  const pdfjs = await loadLibrary()
+  container.replaceChildren()
+  container.classList.add('textLayer')
+  container.style.setProperty('--total-scale-factor', String(scale))
+  container.style.setProperty('--scale-round-x', '1px')
+  container.style.setProperty('--scale-round-y', '1px')
+  const layer = new pdfjs.TextLayer({
+    textContentSource: page.streamTextContent(),
+    container,
+    viewport: page.getViewport({ scale }),
+  })
+  await layer.render().catch(() => undefined) // a cancelled layer rejects; nothing to show then
+  return () => layer.cancel()
+}
