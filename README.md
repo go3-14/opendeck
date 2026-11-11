@@ -96,7 +96,7 @@ Browsers do not update extensions installed this way; download the new zip and r
 
 ### Firefox and Zen
 
-Use the signed `.xpi` from the Releases page, or the listing on addons.mozilla.org once published. Requires Firefox 140 or newer; build it yourself with `npm run package:firefox`.
+Use the signed `.xpi` from the Releases page, or the [listing on addons.mozilla.org](https://addons.mozilla.org/en-US/firefox/addon/opendeck/). Requires Firefox 140 or newer; build it yourself with `npm run package:firefox`.
 
 ### From source
 

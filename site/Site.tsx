@@ -72,6 +72,8 @@ const privacy = [
   'This site loads no third-party scripts, fonts or trackers.',
 ]
 
+const FIREFOX_URL = 'https://addons.mozilla.org/en-US/firefox/addon/opendeck/'
+
 function ComingSoon({ name }: { name: string }) {
   return (
     <Tooltip>
@@ -136,7 +138,9 @@ function Hero() {
         Opendeck is a free, open-source viewer with search, selectable text and a full-screen slideshow. No upload, no account, no server. Your files stay on your device.
       </p>
       <div className={cn(enter, 'mt-7 flex flex-wrap justify-center gap-2.5 delay-200')}>
-        <ComingSoon name="Firefox" />
+        <Button variant="outline" size="lg" className="h-10 px-4" nativeButton={false} render={<a href={FIREFOX_URL} />}>
+          Firefox
+        </Button>
         <ComingSoon name="Chrome" />
         <ComingSoon name="Edge" />
         <Button size="lg" className="h-10 px-4" nativeButton={false} render={<a href={`${REPO}/releases/latest`} />}>
